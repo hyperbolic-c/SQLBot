@@ -117,12 +117,16 @@ class Settings(BaseSettings):
 
     ORACLE_CLIENT_PATH: str = '/opt/sqlbot/db_client/oracle_instant_client'
 
+    # New algorithm configuration
+    USE_NEW_ALGORITHM: bool = False  # Enable the new business_db + algorithm architecture
+
     @field_validator('SQL_DEBUG',
                      'EMBEDDING_ENABLED',
                      'GENERATE_SQL_QUERY_LIMIT_ENABLED',
                      'PARSE_REASONING_BLOCK_ENABLED',
                      'PG_POOL_PRE_PING',
                      'TABLE_EMBEDDING_ENABLED',
+                     'USE_NEW_ALGORITHM',
                      mode='before')
     @classmethod
     def lowercase_bool(cls, v: Any) -> Any:

@@ -18,6 +18,7 @@ from apps.chat.models.chat_model import CreateChat, ChatRecord, RenameChat, Chat
 from apps.chat.task.llm import LLMService
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
 from apps.system.schemas.permission import SqlbotPermission, require_permissions
+from common.core.config import settings
 from common.core.deps import CurrentAssistant, SessionDep, CurrentUser, Trans
 from common.utils.command_utils import parse_quick_command
 from common.utils.data_format import DataFormat
@@ -331,9 +332,69 @@ async def question_answer_inner(session: SessionDep, current_user: CurrentUser, 
             )
 
 
+async def stream_sql_new(session: SessionDep, current_user: CurrentUser, request_question: ChatQuestion,
+                         current_assistant: Optional[CurrentAssistant] = None, in_chat: bool = True,
+                         stream: bool = True,
+                         finish_step: ChatFinishStep = ChatFinishStep.GENERATE_CHART, embedding: bool = False):
+    """
+    New architecture implementation using business_db + algorithm layers.
+
+    Data flow:
+    1. API Layer receives HTTP request
+    2. BusinessDBService.process() [Main Entry Point]
+       - preprocess() - Load all business data
+       - AlgorithmEngine.run() - Algorithm processing
+       - postprocess() - Batch save results
+    3. StreamingResponse to Frontend
+    """
+    from apps.business_db.service import BusinessDBService
+
+    def generate_response():
+        try:
+            # 调用业务数据层主入口
+            business_service = BusinessDBService(session)
+
+            # process() 返回生成器，直接 yield 其内容
+            for event_data in business_service.process(
+                user_id=current_user.id,
+                workspace_id=current_user.workspace_id,
+                oid=current_user.oid,
+                chat_id=request_question.chat_id,
+                question=request_question.question,
+                datasource_id=None,
+                ai_model_id=request_question.ai_modal_id,
+                assistant_id=current_assistant.id if current_assistant else None,
+                regenerate_record_id=request_question.regenerate_record_id,
+                language=request_question.lang,
+                error_msg=request_question.error_msg,
+                finish_step=finish_step,
+                in_chat=in_chat,
+                stream=stream,
+            ):
+                # event_data 是字典，直接序列化
+                yield f"data: {orjson.dumps(event_data)}\n\n"
+
+        except Exception as e:
+            traceback.print_exc()
+            yield f"data: {orjson.dumps({'content': str(e), 'type': 'error'})}\n\n"
+
+    return StreamingResponse(generate_response(), media_type="text/event-stream")
+
+
 async def stream_sql(session: SessionDep, current_user: CurrentUser, request_question: ChatQuestion,
                      current_assistant: Optional[CurrentAssistant] = None, in_chat: bool = True, stream: bool = True,
                      finish_step: ChatFinishStep = ChatFinishStep.GENERATE_CHART, embedding: bool = False):
+    """
+    Main SQL streaming function. Uses new architecture if USE_NEW_ALGORITHM is enabled.
+    """
+    # Check if we should use the new architecture
+    if settings.USE_NEW_ALGORITHM:
+        return await stream_sql_new(
+            session, current_user, request_question, current_assistant,
+            in_chat, stream, finish_step, embedding
+        )
+
+    # Original implementation
     try:
         llm_service = await LLMService.create(session, current_user, request_question, current_assistant,
                                               embedding=embedding)
