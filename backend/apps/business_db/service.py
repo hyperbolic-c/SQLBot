@@ -24,7 +24,6 @@ from .repository import (
     DataTrainingRepository,
     AiModelRepository,
 )
-from sqlalchemy import select
 from .context import (
     AlgorithmContext,
     TerminologyContext,
@@ -174,6 +173,7 @@ class BusinessDBService:
 
     def _get_table_schema(
         self,
+        current_user,
         ds_id: int,
         question: str,
         embedding_enabled: bool = True
@@ -190,17 +190,7 @@ class BusinessDBService:
             if not ds:
                 return "[]", "[]"
 
-            # 创建用于权限检查的 FakeUser
-            class FakeUser:
-                def __init__(self, id, oid):
-                    self.id = id
-                    self.oid = oid
-
-            current_user = FakeUser(id=1, oid=self.session.exec(
-                select(CoreDatasource.oid).where(CoreDatasource.id == ds_id)
-            ).first() or 1)
-
-            # 调用原结构的 get_table_schema 函数（包含 embedding 过滤）
+            # 调用原结构的 get_table_schema 函数（包含 embedding 过滤和权限检查）
             schema_str = original_get_table_schema(
                 session=self.session,
                 current_user=current_user,
@@ -261,8 +251,7 @@ class BusinessDBService:
 
     def preprocess(
         self,
-        user_id: int,
-        oid: int,
+        current_user,
         chat_id: Optional[int],
         question: str,
         datasource_id: Optional[int] = None,
@@ -319,6 +308,7 @@ class BusinessDBService:
                 # embedding_enabled 由 TABLE_EMBEDDING_ENABLED 配置决定
                 embedding_enabled = settings.TABLE_EMBEDDING_ENABLED
                 tables_json, fields_json = self._get_table_schema(
+                    current_user,
                     datasource_context.id,
                     question,
                     embedding_enabled=embedding_enabled
@@ -330,17 +320,17 @@ class BusinessDBService:
         terminology_template = ""
         if datasource_context:
             terminology_template = self._get_terminology_template(
-                oid, question, datasource_context.id
+                current_user.oid, question, datasource_context.id
             )
         else:
-            terminology_template = self._get_terminology_template(oid, question, None)
+            terminology_template = self._get_terminology_template(current_user.oid, question, None)
         SQLBotLogUtil.info(f"[BusinessDBService] 专业术语模板长度: {len(terminology_template)}")
 
         # 5. 获取格式化后的训练数据
         data_training_template = ""
         if datasource_context:
             data_training_template = self._get_training_template(
-                oid, question, datasource_context.id, None
+                current_user.oid, question, datasource_context.id, None
             )
         SQLBotLogUtil.info(f"[BusinessDBService] 训练数据模板长度: {len(data_training_template)}")
 
@@ -348,9 +338,9 @@ class BusinessDBService:
         custom_prompt = ""
         try:
             if datasource_context:
-                custom_prompt = self._get_custom_prompt(oid, datasource_context.id)
+                custom_prompt = self._get_custom_prompt(current_user.oid, datasource_context.id)
             else:
-                custom_prompt = self._get_custom_prompt(oid, None)
+                custom_prompt = self._get_custom_prompt(current_user.oid, None)
         except Exception as e:
             SQLBotLogUtil.warning(f"[BusinessDBService] 获取自定义提示词失败 (可能未授权): {e}")
         SQLBotLogUtil.info(f"[BusinessDBService] 自定义提示词长度: {len(custom_prompt)}")
@@ -396,15 +386,15 @@ class BusinessDBService:
         # 9. 构建上下文 - 包含所有预加载的数据
         # 创建用户上下文
         user_context = UserContext(
-            id=user_id,
-            workspace_id=oid,  # 使用 oid 作为 workspace_id
-            oid=oid,
+            id=current_user.id,
+            workspace_id=current_user.oid,  # 使用 oid 作为 workspace_id
+            oid=current_user.oid,
         )
 
         context = AlgorithmContext(
-            user_id=user_id,
-            workspace_id=oid,  # 使用 oid 作为 workspace_id
-            oid=oid,
+            user_id=current_user.id,
+            workspace_id=current_user.oid,  # 使用 oid 作为 workspace_id
+            oid=current_user.oid,
             user_context=user_context,
             chat_id=chat_id,
             question=question,
@@ -616,8 +606,7 @@ class BusinessDBService:
 
     def process(
         self,
-        user_id: int,
-        oid: int,
+        current_user,
         chat_id: Optional[int],
         question: str,
         datasource_id: Optional[int] = None,
@@ -639,8 +628,7 @@ class BusinessDBService:
         3. postprocess() - 后处理，批量保存结果
 
         Args:
-            user_id: 用户 ID
-            oid: 组织 ID
+            current_user: 用户对象 (UserInfoDTO)
             chat_id: 聊天会话 ID
             question: 用户问题
             datasource_id: 数据源 ID
@@ -662,8 +650,7 @@ class BusinessDBService:
 
         # 1. 预处理：加载所有必要数据
         context = self.preprocess(
-            user_id=user_id,
-            oid=oid,
+            current_user=current_user,
             chat_id=chat_id,
             question=question,
             datasource_id=datasource_id,
@@ -682,7 +669,7 @@ class BusinessDBService:
             record_id = self.create_record(
                 chat_id=chat_id,
                 question=question,
-                user_id=user_id,
+                user_id=current_user.id,
                 datasource_id=datasource_id,
                 engine_type=engine_type,
                 ai_model_id=ai_model_id,
@@ -692,7 +679,7 @@ class BusinessDBService:
             record_id = self.create_record(
                 chat_id=chat_id,
                 question=question,
-                user_id=user_id,
+                user_id=current_user.id,
                 datasource_id=datasource_id,
                 engine_type=engine_type,
                 ai_model_id=ai_model_id,
