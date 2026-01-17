@@ -192,10 +192,11 @@ class BusinessDBService:
 
             # 创建用于权限检查的 FakeUser
             class FakeUser:
-                def __init__(self, oid):
+                def __init__(self, id, oid):
+                    self.id = id
                     self.oid = oid
 
-            current_user = FakeUser(self.session.exec(
+            current_user = FakeUser(id=1, oid=self.session.exec(
                 select(CoreDatasource.oid).where(CoreDatasource.id == ds_id)
             ).first() or 1)
 
