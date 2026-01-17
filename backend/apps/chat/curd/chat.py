@@ -513,7 +513,9 @@ def create_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj:
         _record.id = record.id
         session.commit()
 
+        print(f"[DEBUG] create_chat: chat_id={chat.id}, records before append: {len(chat_info.records)}")
         chat_info.records.append(_record)
+        print(f"[DEBUG] create_chat: chat_id={chat.id}, records after append: {len(chat_info.records)}, first record id: {_record.id}")
 
     return chat_info
 
