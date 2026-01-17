@@ -161,6 +161,7 @@ const sendMessage = async () => {
 
             switch (data.type) {
               case 'id':
+                console.log('[DEBUG] id event:', { indexValue: index.value, id: data.id, oldId: currentRecord.id })
                 currentRecord.id = data.id
                 _currentChat.value.records[index.value].id = data.id
                 break
@@ -197,11 +198,17 @@ const sendMessage = async () => {
                 break
               case 'sql-data':
                 const recordId = _currentChat.value.records[index.value]?.id
-                console.log('[DEBUG] sql-data event, index.value:', index.value, 'recordId:', recordId)
+                console.log('[DEBUG] sql-data event:', {
+                  indexValue: index.value,
+                  currentRecordId: currentRecord.id,
+                  recordsCount: _currentChat.value.records.length,
+                  targetRecordId: recordId
+                })
                 if (recordId) {
                   getChatData(recordId)
                 } else {
                   console.error('[ERROR] sql-data: recordId is undefined, index.value:', index.value)
+                  console.log('[DEBUG] _currentChat.records:', JSON.stringify(_currentChat.value.records.map(r => ({id: r.id, question: r.question}))))
                 }
                 break
               case 'chart-result':
@@ -217,6 +224,12 @@ const sendMessage = async () => {
                 }
                 break
               case 'finish':
+                console.log('[DEBUG] finish event:', {
+                  indexValue: index.value,
+                  currentRecordId: currentRecord.id,
+                  hasChart: !!currentRecord.chart,
+                  hasData: !!currentRecord.data
+                })
                 currentRecord.isTyping = false
                 _currentChat.value.records[index.value].isTyping = false
                 emits('finish', currentRecord.id)
