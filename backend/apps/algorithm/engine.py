@@ -39,7 +39,7 @@ from common.utils.data_format import DataFormat
 from common.utils.utils import SQLBotLogUtil, extract_nested_json
 
 from ..business_db.context import AlgorithmContext
-from ..business_db.result import AlgorithmResult, ChatLogCreate
+from ..business_db.result import AlgorithmResult, ChatLogCreate, ChatUpdate
 
 
 @dataclass
