@@ -204,9 +204,13 @@ def get_chart_data_with_user(session: SessionDep, current_user: CurrentUser, cha
     res = session.execute(stmt)
     for row in res:
         try:
-            return orjson.loads(row.data)
-        except Exception:
+            data = orjson.loads(row.data)
+            print(f"[DEBUG] get_chart_data_with_user: record_id={chat_record_id}, data_len={len(str(data))}")
+            return data
+        except Exception as e:
+            print(f"[DEBUG] get_chart_data_with_user: record_id={chat_record_id}, error={e}")
             pass
+    print(f"[DEBUG] get_chart_data_with_user: record_id={chat_record_id}, data is empty")
     return {}
 
 def get_chat_chart_data(session: SessionDep, chat_record_id: int):
