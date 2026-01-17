@@ -1096,12 +1096,8 @@ class AlgorithmEngine:
                 else:
                     SQLBotLogUtil.warning(f"[AlgorithmEngine] 图表配置为空, chart_answer={self._result.chart_answer[:200] if self._result.chart_answer else 'None'}")
 
-            # 8.5 生成推荐问题（在图表生成后、finish 前）
-            if self.context.ai_model:
-                SQLBotLogUtil.info("[AlgorithmEngine] 开始生成推荐问题")
-                for event in self._generate_recommended_questions():
-                    yield event
-                SQLBotLogUtil.info("[AlgorithmEngine] 推荐问题生成完成")
+            # 注意：推荐问题通过独立的 API 生成，不在此流程中生成
+            # 原实现通过 POST /chat/recommend_questions/{chat_record_id} 生成推荐问题
 
             # 9. 完成
             self._result.finish = True

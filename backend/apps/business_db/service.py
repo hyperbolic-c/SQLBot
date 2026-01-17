@@ -846,9 +846,6 @@ class BusinessDBService:
             # 对于 filter-result 事件
             elif event.type == 'filter-result':
                 sse_data = {'content': event.data.get('content'), 'reasoning_content': event.data.get('reasoning_content'), 'type': event.type}
-            # 对于 recommended_question 事件
-            elif event.type == 'recommended_question':
-                sse_data = {'content': event.data.get('content'), 'type': event.type}
             # 对于 error 事件
             elif event.type == 'error':
                 sse_data = {'content': event.data.get('content'), 'type': event.type}
