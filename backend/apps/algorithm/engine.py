@@ -767,7 +767,6 @@ class AlgorithmEngine:
                     SQLBotLogUtil.info(f"[AlgorithmEngine] LLM 调用完成, sql_answer={self._result.sql_answer}")
                 except Exception as gen_e:
                     SQLBotLogUtil.error(f"[AlgorithmEngine] LLM 调用异常: {gen_e}")
-                    import traceback
                     SQLBotLogUtil.error(f"[AlgorithmEngine] 异常详情: {traceback.format_exc()}")
                     raise
 

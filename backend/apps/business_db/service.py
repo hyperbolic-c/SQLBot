@@ -24,6 +24,7 @@ from .repository import (
     DataTrainingRepository,
     AiModelRepository,
 )
+from sqlalchemy import select
 from .context import (
     AlgorithmContext,
     TerminologyContext,
