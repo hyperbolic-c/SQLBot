@@ -496,6 +496,8 @@ class BusinessDBService:
         self.session.add(record)
         self.session.flush()
         self.session.refresh(record)
+        # 必须 commit，确保记录对其他连接可见（原实现有 commit）
+        self.session.commit()
         return record.id
 
     def save_sql_answer(self, record_id: int, answer: str):
