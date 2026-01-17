@@ -945,19 +945,20 @@ class AlgorithmEngine:
         self._result.record_id = record_id
         self._result.chat_id = self.context.chat_id or 0
 
-        SQLBotLogUtil.info(f"[AlgorithmEngine] run 方法开始执行, record_id={record_id}")
+        SQLBotLogUtil.info(f"[AlgorithmEngine] run 方法开始执行, record_id={record_id}, in_chat={in_chat}")
         try:
-            # 1. 返回 record_id
-            SQLBotLogUtil.info(f"[AlgorithmEngine] yield id 事件")
-            yield StreamEvent(type="id", data={"id": record_id})
+            # 1. 返回 record_id（与原实现一致，只在 in_chat=True 时输出）
+            if in_chat:
+                SQLBotLogUtil.info(f"[AlgorithmEngine] yield id 事件")
+                yield StreamEvent(type="id", data={"id": record_id})
 
-            if self.context.regenerate_record_id:
-                yield StreamEvent(
-                    type="regenerate_record_id",
-                    data={"regenerate_record_id": self.context.regenerate_record_id}
-                )
+                if self.context.regenerate_record_id:
+                    yield StreamEvent(
+                        type="regenerate_record_id",
+                        data={"regenerate_record_id": self.context.regenerate_record_id}
+                    )
 
-            yield StreamEvent(type="question", data={"question": self.context.question})
+                yield StreamEvent(type="question", data={"question": self.context.question})
 
             # 2. 获取数据源
             ds = self._get_datasource()
