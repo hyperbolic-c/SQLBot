@@ -267,15 +267,24 @@ const sendMessage = async () => {
 const loadingData = ref(false)
 
 function getChatData(recordId?: number): Promise<void> {
+  if (!recordId) {
+    console.log('[DEBUG] getChatData: recordId is undefined, skip')
+    return Promise.resolve()
+  }
   loadingData.value = true
+  console.log('[DEBUG] getChatData: calling API, recordId:', recordId)
   return chatApi
     .get_chart_data(recordId)
     .then((response) => {
+      console.log('[DEBUG] getChatData: API response received, response type:', typeof response, 'has data:', !!response)
       _currentChat.value.records.forEach((record) => {
         if (record.id === recordId) {
           record.data = response
         }
       })
+    })
+    .catch((error) => {
+      console.error('[DEBUG] getChatData: API error:', error.message)
     })
     .finally(() => {
       loadingData.value = false
