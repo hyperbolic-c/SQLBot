@@ -1,37 +1,9 @@
 # Dockerfile for testing the refactored architecture
 # This builds on the original image and adds the refactored code
 # docker build -f .\Dockerfile.test -t sqlbot-refactor:test .
-# docker build -f .\Dockerfile.test -t sqlbot-refactor:test --build-arg FRONTEND_BUILD=false .
 
 # Arguments
 ARG ORIGINAL_IMAGE=dataease/sqlbot:v1.5.0
-ARG FRONTEND_BUILD=true
-
-# Stage 1: Build frontend if needed
-FROM --platform=${BUILDPLATFORM} node:20-alpine AS frontend-builder
-ARG FRONTEND_BUILD
-
-# Only build frontend if FRONTEND_BUILD=true
-FROM --platform=${BUILDPLATFORM} node:20-alpine AS sqlbot-ui-builder
-WORKDIR /app
-
-# Copy frontend source
-COPY frontend /tmp/frontend
-
-# Configure npm
-RUN npm config set fund false \
-    && npm config set audit false \
-    && npm config set progress false
-
-# Build frontend only if FRONTEND_BUILD=true
-RUN if [ "$FRONTEND_BUILD" = "true" ]; then \
-    cd /tmp/frontend && \
-    npm install && \
-    npm run build && \
-    mv dist /tmp/frontend-dist; \
-    else \
-    echo "Skipping frontend build"; \
-    fi
 
 FROM ${ORIGINAL_IMAGE} AS refactor-tester
 
@@ -44,8 +16,24 @@ ENV UI_HOME=${SQLBOT_HOME}/frontend
 # Set the new algorithm flag for testing
 ENV USE_NEW_ALGORITHM=true
 
-# Copy frontend build result if available
-COPY --from=sqlbot-ui-builder /tmp/frontend-dist ${UI_HOME}/dist
+# Install npm in container (nodejs already exists)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    npm && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy frontend source and build in container
+COPY frontend ${SQLBOT_HOME}/frontend
+
+# Build frontend in container
+WORKDIR ${SQLBOT_HOME}/frontend
+RUN npm config set fund false \
+    && npm config set audit false \
+    && npm config set progress false && \
+    npm install && \
+    npm run build && \
+    rm -rf node_modules
+
+WORKDIR ${SQLBOT_HOME}/app
 
 # Create necessary directories
 RUN mkdir -p ${SQLBOT_HOME}/app
@@ -56,8 +44,6 @@ COPY backend/ ${SQLBOT_HOME}/app/
 
 # Copy tests (optional)
 COPY backend/tests/ ${SQLBOT_HOME}/app/tests/
-
-WORKDIR ${SQLBOT_HOME}/app
 
 # Verify the new modules are in place
 RUN python -c "from apps.business_db.service import BusinessDBService; from apps.algorithm.engine import AlgorithmEngine; print('Refactored modules loaded successfully!')"
