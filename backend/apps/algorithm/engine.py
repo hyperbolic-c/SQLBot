@@ -206,7 +206,7 @@ class AlgorithmEngine:
             model_id=self.context.ai_model.id,
             model_type=model_type,
             model_name=self.context.ai_model.base_model,
-            api_domain=self.context.ai_model.api_domain,
+            api_base_url=self.context.ai_model.api_domain,
             api_key=self.context.ai_model.api_key,
         )
 
