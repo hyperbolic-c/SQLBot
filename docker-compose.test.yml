@@ -1,0 +1,55 @@
+# docker-compose.yml for testing the refactored architecture
+# Usage: docker-compose -f docker-compose.test.yml up -d
+
+services:
+  sqlbot-refactor:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+      args:
+        # Change this to match your local original image
+        ORIGINAL_IMAGE: registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-python-pg:latest
+    container_name: sqlbot-refactor-test
+    ports:
+      - "38000:3000"   # UI
+      - "38001:8000"   # API
+      - "38002:8001"   # Admin
+    environment:
+      - POSTGRES_SERVER=postgres-refactor
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=sqlbot
+      - POSTGRES_USER=root
+      - POSTGRES_PASSWORD=Password123@pg
+      - USE_NEW_ALGORITHM=true
+      - SQL_DEBUG=false
+      - LOG_LEVEL=INFO
+    volumes:
+      # Mount templates for testing
+      - ./backend/templates:/opt/sqlbot/app/backend/templates:ro
+      # Mount tests for verification
+      - ./backend/tests:/opt/sqlbot/app/tests:ro
+    depends_on:
+      - postgres-refactor
+    networks:
+      - sqlbot-refactor-net
+
+  postgres-refactor:
+    image: postgres:15-alpine
+    container_name: postgres-refactor
+    environment:
+      - POSTGRES_DB=sqlbot
+      - POSTGRES_USER=root
+      - POSTGRES_PASSWORD=Password123@pg
+    ports:
+      - "35432:5432"
+    volumes:
+      - postgres-refactor-data:/var/lib/postgresql/data
+    networks:
+      - sqlbot-refactor-net
+
+volumes:
+  postgres-refactor-data:
+
+networks:
+  sqlbot-refactor-net:
+    driver: bridge
