@@ -52,6 +52,7 @@ export class ChatRecord {
   analysis_record_id?: number
   predict_record_id?: number
   regenerate_record_id?: number
+  isTyping?: boolean = false
 
   constructor()
   constructor(
