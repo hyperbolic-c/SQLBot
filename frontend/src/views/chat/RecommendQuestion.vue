@@ -157,7 +157,8 @@ function stop() {
 }
 
 onBeforeUnmount(() => {
-  stop()
+  // 只停止 SSE 读取循环，不触发 stop 事件（避免 onChatStop 被重复触发）
+  stopFlag.value = true
 })
 
 defineExpose({ getRecommendQuestions, id: () => props.recordId, stop })
