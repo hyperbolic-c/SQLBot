@@ -313,6 +313,7 @@ class BusinessDBService:
         regenerate_record_id: Optional[int] = None,
         language: str = "zh-CN",
         error_msg: str = "",
+        record_id: Optional[int] = None,
     ) -> AlgorithmContext:
         """
         预处理：从业务数据库加载所有必要数据
@@ -463,6 +464,7 @@ class BusinessDBService:
             oid=current_user.oid,
             user_context=user_context,
             chat_id=chat_id,
+            chat_record_id=record_id,  # 记录 ID
             question=question,
             regenerate_record_id=regenerate_record_id,
             terminologies=[],  # 预加载的数据已转换为模板字符串
@@ -916,10 +918,12 @@ class BusinessDBService:
 
         # 预加载业务数据
         context = self.preprocess(
+            current_user=None,  # 推荐问题不需要用户信息
             chat_id=0,  # 推荐问题不需要 chat_id
             question='',
             record_id=record_id,
             datasource_id=None,
+            ai_model_id=None,
             regenerate_record_id=None,
             language='zh',
         )
