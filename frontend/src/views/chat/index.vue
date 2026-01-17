@@ -740,6 +740,8 @@ function quickAsk(question: string) {
 const chartAnswerRef = ref()
 const getRecommendQuestionsLoading = ref(false)
 async function onChartAnswerFinish(id: number) {
+  // 立即标记推荐问题加载完成，避免 RecommendQuestion 完成时影响 isTyping 状态
+  getRecommendQuestionsLoading.value = false
   getRecommendQuestionsLoading.value = true
   loading.value = false
   isTyping.value = false
