@@ -809,7 +809,60 @@ class BusinessDBService:
                 self.postprocess(result)
                 SQLBotLogUtil.info(f"[BusinessDBService] postprocess 完成")
 
-            yield {'type': event.type, **event.data}
+            # 生成 SSE 事件，格式与原实现保持一致
+            # 原实现格式: {'content': ..., 'type': '...'}，content 在前，type 在后
+            sse_data = {'content': event.data.get('content', event.data.get('msg', '')), 'type': event.type}
+
+            # 对于 id 事件，格式为 {'type': 'id', 'id': ...}
+            if event.type == 'id':
+                sse_data = {'type': event.type, 'id': event.data.get('id')}
+            # 对于 regenerate_record_id 事件
+            elif event.type == 'regenerate_record_id':
+                sse_data = {'type': event.type, 'regenerate_record_id': event.data.get('regenerate_record_id')}
+            # 对于 question 事件
+            elif event.type == 'question':
+                sse_data = {'type': event.type, 'question': event.data.get('question')}
+            # 对于 brief 事件
+            elif event.type == 'brief':
+                sse_data = {'type': event.type, 'brief': event.data.get('brief')}
+            # 对于 info 事件
+            elif event.type == 'info':
+                sse_data = {'type': event.type, 'msg': event.data.get('msg')}
+            # 对于 sql 事件
+            elif event.type == 'sql':
+                sse_data = {'content': event.data.get('content'), 'type': event.type}
+            # 对于 sql-data 事件
+            elif event.type == 'sql-data':
+                sse_data = {'content': event.data.get('content'), 'type': event.type}
+            # 对于 chart 事件
+            elif event.type == 'chart':
+                sse_data = {'content': event.data.get('content'), 'type': event.type}
+            # 对于 chart-result 事件
+            elif event.type == 'chart-result':
+                sse_data = {'content': event.data.get('content'), 'reasoning_content': event.data.get('reasoning_content'), 'type': event.type}
+            # 对于 sql-result 事件
+            elif event.type == 'sql-result':
+                sse_data = {'content': event.data.get('content'), 'reasoning_content': event.data.get('reasoning_content'), 'type': event.type}
+            # 对于 recommended_question 事件
+            elif event.type == 'recommended_question':
+                sse_data = {'content': event.data.get('content'), 'type': event.type}
+            # 对于 error 事件
+            elif event.type == 'error':
+                sse_data = {'content': event.data.get('content'), 'type': event.type}
+            # 对于 finish 事件
+            elif event.type == 'finish':
+                sse_data = {'type': event.type}
+            # 对于 datasource 事件
+            elif event.type == 'datasource':
+                # 原实现格式: {'id': ..., 'datasource_name': ..., 'engine_type': ..., 'type': 'datasource'}
+                sse_data = {
+                    'id': event.data.get('id'),
+                    'datasource_name': event.data.get('name'),
+                    'engine_type': event.data.get('type'),
+                    'type': event.type
+                }
+
+            yield sse_data
         SQLBotLogUtil.info(f"[BusinessDBService] 算法执行完成")
 
         SQLBotLogUtil.info(f"[BusinessDBService] 处理完成")
