@@ -557,45 +557,14 @@ class BusinessDBService:
 
     def postprocess(self, result: AlgorithmResult):
         """
-        后处理：批量保存算法结果
-        使用单一事务，确保所有数据原子性提交
+        后处理：保存剩余数据（finish 标志、chat 标题等）
+        注意：大部分数据已在事件处理时同步保存
         """
-        SQLBotLogUtil.info(f"[BusinessDBService] 开始后处理, record_id={result.record_id}")
-        SQLBotLogUtil.info(f"[BusinessDBService] postprocess 数据: sql={bool(result.sql)}, sql_answer={bool(result.sql_answer)}, data={bool(result.data)}, chart={bool(result.chart)}, chart_answer={bool(result.chart_answer)}, finish={result.finish}")
+        SQLBotLogUtil.info(f"[BusinessDBService] postprocess 开始, record_id={result.record_id}")
 
         try:
-            # 1. 保存 SQL 相关
-            if result.sql_answer:
-                SQLBotLogUtil.info(f"[BusinessDBService] 保存 sql_answer, 长度={len(result.sql_answer)}")
-                self._update_record_field(result.record_id, sql_answer=result.sql_answer)
-            if result.sql:
-                SQLBotLogUtil.info(f"[BusinessDBService] 保存 sql, 长度={len(result.sql)}")
-                self._update_record_field(result.record_id, sql=result.sql)
-
-            # 2. 保存图表相关
-            if result.chart_answer:
-                SQLBotLogUtil.info(f"[BusinessDBService] 保存 chart_answer, 长度={len(result.chart_answer)}")
-                self._update_record_field(result.record_id, chart_answer=result.chart_answer)
-            if result.chart:
-                SQLBotLogUtil.info(f"[BusinessDBService] 保存 chart, 长度={len(result.chart)}")
-                self._update_record_field(result.record_id, chart=result.chart)
-
-            # 3. 保存执行数据
-            if result.data:
-                SQLBotLogUtil.info(f"[BusinessDBService] 保存 data, 长度={len(result.data)}")
-                self._update_record_field(result.record_id, data=result.data)
-
-            # 4. 保存错误信息
-            if result.error:
-                SQLBotLogUtil.info(f"[BusinessDBService] 保存 error")
-                self._update_record_field(
-                    result.record_id,
-                    error=result.error,
-                    finish=True,
-                    finish_time=dt.now()
-                )
-            elif result.finish:
-                # 5. 完成记录（无错误时）
+            # 1. 设置 finish 标志（必须最后设置，确保数据完整）
+            if result.finish:
                 SQLBotLogUtil.info(f"[BusinessDBService] 设置 finish=true")
                 self._update_record_field(
                     result.record_id,
@@ -603,7 +572,7 @@ class BusinessDBService:
                     finish_time=dt.now()
                 )
 
-            # 6. 更新聊天标题
+            # 2. 更新聊天标题
             if result.update_chat and result.update_chat.brief:
                 SQLBotLogUtil.info(f"[BusinessDBService] 更新聊天标题: {result.update_chat.brief}")
                 self._update_chat_brief(
@@ -612,14 +581,14 @@ class BusinessDBService:
                     result.update_chat.brief_generate
                 )
 
-            # 统一提交事务
-            SQLBotLogUtil.info(f"[BusinessDBService] 执行 flush 和 commit")
+            # 提交事务
+            SQLBotLogUtil.info(f"[BusinessDBService] postprocess 执行 flush 和 commit")
             self.session.flush()
             self.session.commit()
-            SQLBotLogUtil.info(f"[BusinessDBService] postprocess 完成，数据已提交")
+            SQLBotLogUtil.info(f"[BusinessDBService] postprocess 完成")
         except Exception as e:
             self.session.rollback()
-            SQLBotLogUtil.error(f"[BusinessDBService] 后处理失败: {e}")
+            SQLBotLogUtil.error(f"[BusinessDBService] postprocess 失败: {e}")
             raise
 
     def _update_record_field(self, record_id: int, **kwargs):
@@ -744,14 +713,48 @@ class BusinessDBService:
         ):
             SQLBotLogUtil.info(f"[BusinessDBService] 收到事件: type={event.type}")
 
-            # 在 yield finish 事件之前，先执行 postprocess 提交数据
-            # 这样前端能在流结束后立即读取到已提交的数据
+            # 同步保存数据到数据库（与原实现保持一致的保存时机）
+            result = engine.get_result()
+
+            # info (sql generated) 事件时保存 sql_answer（SQL 生成完成后）
+            if event.type == "info" and result and result.sql_answer:
+                SQLBotLogUtil.info(f"[BusinessDBService] 保存 sql_answer (info 事件)")
+                self._update_record_field(result.record_id, sql_answer=result.sql_answer)
+                self.session.flush()
+                self.session.commit()
+
+            # sql 事件时保存 sql（SQL 解析完成后）
+            if event.type == "sql" and result and result.sql:
+                SQLBotLogUtil.info(f"[BusinessDBService] 保存 sql (sql 事件)")
+                self._update_record_field(result.record_id, sql=result.sql)
+                self.session.flush()
+                self.session.commit()
+
+            # sql-data 事件前保存 data（与原实现 save_sql_data 在 yield 前一致）
+            if event.type == "sql-data" and result and result.data:
+                SQLBotLogUtil.info(f"[BusinessDBService] 保存 data (sql-data 事件)")
+                self._update_record_field(result.record_id, data=result.data)
+                self.session.flush()
+                self.session.commit()
+
+            # chart 事件后保存 chart 和 chart_answer（与原实现一致）
+            if event.type == "chart" and result:
+                if result.chart:
+                    SQLBotLogUtil.info(f"[BusinessDBService] 保存 chart")
+                    self._update_record_field(result.record_id, chart=result.chart)
+                if result.chart_answer:
+                    SQLBotLogUtil.info(f"[BusinessDBService] 保存 chart_answer")
+                    self._update_record_field(result.record_id, chart_answer=result.chart_answer)
+                if result.chart or result.chart_answer:
+                    self.session.flush()
+                    self.session.commit()
+
+            # 在 yield finish 事件之前，执行完整的 postprocess
+            # 保存剩余的数据（update_chat, finish 标志等）
             if event.type == "finish":
-                result = engine.get_result()
-                if result:
-                    SQLBotLogUtil.info(f"[BusinessDBService] 收到 finish 事件，执行 postprocess")
-                    self.postprocess(result)
-                    SQLBotLogUtil.info(f"[BusinessDBService] postprocess 完成")
+                SQLBotLogUtil.info(f"[BusinessDBService] 收到 finish 事件，执行 postprocess")
+                self.postprocess(result)
+                SQLBotLogUtil.info(f"[BusinessDBService] postprocess 完成")
 
             yield {'type': event.type, **event.data}
         SQLBotLogUtil.info(f"[BusinessDBService] 算法执行完成")
