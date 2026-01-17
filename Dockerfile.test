@@ -1,5 +1,6 @@
 # Dockerfile for testing the refactored architecture
 # This builds on the original image and adds the refactored code
+# docker build -f .\Dockerfile.test -t sqlbot-refacter:v1.1.0 .
 
 # Arguments
 ARG ORIGINAL_IMAGE=dataease/sqlbot:v1.5.0

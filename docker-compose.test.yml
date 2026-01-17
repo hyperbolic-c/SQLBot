@@ -4,7 +4,7 @@
 services:
   sqlbot-refactor:
     # Use the pre-built image instead of building
-    image: sqlbot-refacter:v1.0.0
+    image: sqlbot-refacter:v1.6.29
     container_name: sqlbot-refactor-test
     ports:
       - "38000:3000"   # UI
@@ -42,6 +42,7 @@ services:
     networks:
       - sqlbot-refactor-net
 
+# docker inspect mysql-wandasql | findstr "IPAddress" 
   mysql-wandasql:
     image: mysql:8.0
     container_name: mysql-wandasql
