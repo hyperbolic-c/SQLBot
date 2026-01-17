@@ -1142,3 +1142,115 @@ class AlgorithmEngine:
     def get_result(self) -> AlgorithmResult:
         """获取执行结果"""
         return self._result
+
+    def run_recommend_questions(
+        self,
+        articles_number: int = 4,
+    ) -> Generator[StreamEvent, None, AlgorithmResult]:
+        """
+        独立运行推荐问题生成（复刻原 LLMService.generate_recommend_questions_task）
+
+        此方法用于在用户输入问题前生成推荐问题，与主算法流程独立
+
+        Args:
+            articles_number: 生成推荐问题数量
+
+        Yields:
+            StreamEvent: 流式事件
+
+        Returns:
+            AlgorithmResult: 执行结果
+        """
+        SQLBotLogUtil.info(f"[AlgorithmEngine] run_recommend_questions 开始, record_id={self.context.record_id}")
+
+        try:
+            # 初始化 LLM
+            self._init_llm()
+
+            # 获取数据源
+            ds = self._get_datasource()
+            if ds is None:
+                raise SingleMessageError("No datasource configured")
+
+            # 构建消息
+            guess_msg: List[Union[BaseMessage, dict]] = []
+            guess_msg.append(SystemMessage(
+                content=self._build_recommended_questions_system_prompt()
+            ))
+
+            # 添加历史问题
+            old_questions = self.context.old_questions or []
+            guess_msg.append(HumanMessage(
+                content=self._build_recommended_questions_user_prompt(old_questions)
+            ))
+
+            # 记录日志
+            self._current_log = ChatLogCreate(
+                type=OperationEnum.GENERATE_RECOMMENDED_QUESTIONS.value,
+                operate=OperationEnum.GENERATE_RECOMMENDED_QUESTIONS.value,
+                pid=self._result.record_id,
+                ai_modal_id=self.context.ai_model.id if self.context.ai_model else None,
+                start_time=datetime.now(),
+            )
+
+            full_guess_text = ""
+            token_usage = {}
+            reasoning = ""
+
+            try:
+                # 调用 LLM 生成推荐问题
+                for chunk in self._llm.stream(guess_msg):
+                    content = ""
+                    if hasattr(chunk, 'content'):
+                        content = chunk.content
+                    if hasattr(chunk, 'response_metadata') and chunk.response_metadata:
+                        reasoning = chunk.response_metadata.get('reasoning_content', '')
+
+                    full_guess_text += content
+
+                    yield StreamEvent(
+                        type="recommended_question",
+                        data={"content": content, "reasoning_content": reasoning}
+                    )
+
+                # 结束日志
+                self._current_log.finish_time = datetime.now()
+                self._current_log.messages = [
+                    {"type": msg.type, "content": msg.content if hasattr(msg, 'content') else str(msg)}
+                    for msg in guess_msg
+                ]
+                self._current_log.token_usage = token_usage
+                self._current_log.reasoning_content = reasoning
+
+                # 保存推荐问题答案
+                self._result.recommended_question_answer = orjson.dumps({'content': full_guess_text}).decode()
+
+                # 解析推荐问题 JSON
+                recommended_question = self._parse_recommended_questions(full_guess_text)
+                self._result.recommended_question = recommended_question
+
+                SQLBotLogUtil.info(f"[AlgorithmEngine] 推荐问题生成完成, 数量={len(recommended_question) if recommended_question else 0}")
+
+                # 记录日志
+                if self._current_log:
+                    self._result.logs.append(self._current_log)
+
+            except Exception as e:
+                SQLBotLogUtil.error(f"[AlgorithmEngine] 生成推荐问题失败: {e}")
+                error_msg = orjson.dumps({
+                    'message': str(e),
+                    'type': 'error'
+                }).decode()
+                yield StreamEvent(type="error", data={"content": error_msg})
+                self._result.error = error_msg
+
+        except Exception as e:
+            traceback.print_exc()
+            error_msg = orjson.dumps({
+                'message': str(e),
+                'type': 'error'
+            }).decode()
+            yield StreamEvent(type="error", data={"content": error_msg})
+            self._result.error = error_msg
+
+        return self._result

@@ -874,3 +874,83 @@ class BusinessDBService:
     def set_result(self, result: 'AlgorithmResult'):
         """设置执行结果"""
         self._last_result = result
+
+    def process_recommend_questions(
+        self,
+        record_id: int,
+        articles_number: int = 4,
+        in_chat: bool = True,
+    ) -> Generator[Dict[str, Any], None, 'AlgorithmResult']:
+        """
+        处理推荐问题生成（独立流程，不经过主算法流程）
+
+        复刻原 LLMService.generate_recommend_questions_task 流程
+
+        Args:
+            record_id: 聊天记录 ID
+            articles_number: 生成推荐问题数量
+            in_chat: 是否在聊天中
+
+        Yields:
+            Dict: SSE 事件数据
+
+        Returns:
+            AlgorithmResult: 执行结果
+        """
+        from apps.algorithm.engine import AlgorithmEngine
+        from apps.ai_model.model_factory import get_default_config
+        import asyncio
+
+        SQLBotLogUtil.info(f"[BusinessDBService] process_recommend_questions 开始, record_id={record_id}")
+
+        # 预加载业务数据
+        context = self.preprocess(
+            chat_id=0,  # 推荐问题不需要 chat_id
+            question='',
+            record_id=record_id,
+            datasource_id=None,
+            regenerate_record_id=None,
+            language='zh',
+        )
+
+        # 获取 AI 模型配置
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        config = loop.run_until_complete(get_default_config())
+        context.ai_model_id = config.model_id
+        context.ai_model = config
+
+        # 创建算法引擎
+        engine = AlgorithmEngine(context, self.session)
+
+        # 运行推荐问题生成
+        result = None
+        for event in engine.run_recommend_questions(articles_number=articles_number):
+            SQLBotLogUtil.info(f"[BusinessDBService] 收到推荐问题事件: type={event.type}")
+            result = engine.get_result()
+
+            # 生成 SSE 事件，格式与原实现保持一致
+            if event.type == 'recommended_question':
+                sse_data = {'content': event.data.get('content'), 'type': event.type}
+                yield sse_data
+            elif event.type == 'error':
+                sse_data = {'content': event.data.get('content'), 'type': event.type}
+                yield sse_data
+
+        # 保存推荐问题答案（最后统一保存）
+        if result and result.recommended_question_answer:
+            self._update_record_field(
+                record_id,
+                recommended_question_answer=result.recommended_question_answer,
+                recommended_question=result.recommended_question
+            )
+            self.session.commit()
+            SQLBotLogUtil.info(f"[BusinessDBService] 推荐问题已保存到数据库")
+
+        SQLBotLogUtil.info(f"[BusinessDBService] process_recommend_questions 完成")
+
+        return result if result else engine.get_result()
