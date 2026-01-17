@@ -228,8 +228,8 @@ class AlgorithmEngine:
         sql_template = get_sql_template()
         sql_example = get_sql_example_template(self.context.engine)
 
-        # 构建表结构
-        schema = self._build_schema_text()
+        # 构建表结构 - 使用原始格式的 db_schema（与原结构一致）
+        schema = self.context.db_schema if self.context.db_schema else self._build_schema_text()
 
         # 构建基础 SQL 规则
         base_sql_rules = ""
@@ -286,9 +286,12 @@ class AlgorithmEngine:
         if self.context.regenerate_record_id:
             question = sql_template.get('regenerate_hint', '') + question
 
+        # 使用原始格式的 db_schema（与原结构一致）
+        schema = self.context.db_schema if self.context.db_schema else self._build_schema_text()
+        
         user_prompt = sql_template['user'].format(
             engine=self.context.engine,
-            schema=self._build_schema_text(),
+            schema=schema,
             question=question,
             rule="",
             current_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),

@@ -145,6 +145,9 @@ class AlgorithmContext(BaseModel):
     tables_json: str = "[]"
     fields_json: str = "[]"
 
+    # 原始格式的表结构字符串（与原结构一致，用于算法引擎）
+    db_schema: str = ""
+
     # Chat 配置
     chat_brief_generate: bool = False
     chat_engine_type: str = ""

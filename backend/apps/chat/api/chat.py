@@ -347,6 +347,7 @@ async def stream_sql_new(session: SessionDep, current_user: CurrentUser, request
        - postprocess() - Batch save results
     3. StreamingResponse to Frontend
     """
+    from apps.ai_model.model_factory import get_default_config
     from apps.business_db.service import BusinessDBService
 
     def generate_response():
@@ -354,13 +355,24 @@ async def stream_sql_new(session: SessionDep, current_user: CurrentUser, request
             # 调用业务数据层主入口
             business_service = BusinessDBService(session)
 
-            # process() 返回生成器，直接 yield 其内容
+            # 获取默认 AI 模型配置（复刻原 LLMService.create 的行为）
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+            config = loop.run_until_complete(get_default_config())
+            ai_model_id = config.model_id
+
+            # 调用 process，传入获取到的 ai_model_id
             for event_data in business_service.process(
                 current_user=current_user,
                 chat_id=request_question.chat_id,
                 question=request_question.question,
                 datasource_id=None,
-                ai_model_id=request_question.ai_modal_id,
+                ai_model_id=ai_model_id,
                 regenerate_record_id=request_question.regenerate_record_id,
                 language=request_question.lang,
                 error_msg=request_question.error_msg,

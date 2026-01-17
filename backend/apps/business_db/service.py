@@ -181,8 +181,14 @@ class BusinessDBService:
         """
         获取表结构
 
-        复刻 apps.datasource.curd.datasource.get_table_schema 和 get_table_obj_by_ds
+        复刻 apps.datasource.crud.datasource.get_table_schema
         返回格式与原结构一致，用于算法引擎构建 schema 文本
+
+        Returns:
+            tuple: (schema_str, tables_json, fields_json)
+                - schema_str: 原始格式的表结构字符串（与原结构一致）
+                - tables_json: JSON 格式的表信息列表
+                - fields_json: JSON 格式的字段信息列表
         """
         try:
             from apps.datasource.crud.datasource import get_table_obj_by_ds
@@ -190,7 +196,7 @@ class BusinessDBService:
 
             ds = self.ds_repo.get_datasource(ds_id)
             if not ds:
-                return "[]", "[]"
+                return "", "[]", "[]"
 
             # 获取表对象（包含字段信息）- 复刻原结构
             table_objs = get_table_obj_by_ds(
@@ -200,9 +206,9 @@ class BusinessDBService:
             )
 
             if len(table_objs) == 0:
-                return "[]", "[]"
+                return "", "[]", "[]"
 
-            # 构建表结构列表
+            # 构建表结构列表（用于 JSON 格式）
             tables = []
             fields = []
 
@@ -227,16 +233,46 @@ class BusinessDBService:
                         })
 
             tables_json = str(tables).replace("'", '"')
-            fields_json = str(fields).replace("'", '"")
+            fields_json = str(fields).replace("'", '"')
+
+            # 构建原始格式的 schema 字符串（与原结构 get_table_schema 一致）
+            schema_str = ""
+            db_name = table_objs[0].schema if table_objs else ""
+            schema_str += f"【DB_ID】 {db_name}\n【Schema】\n"
+
+            for obj in table_objs:
+                schema_table = ''
+                schema_table += f"# Table: {db_name}.{obj.table.table_name}" if ds.type != "mysql" and ds.type != "es" else f"# Table: {obj.table.table_name}"
+                table_comment = ''
+                if obj.table.custom_comment:
+                    table_comment = obj.table.custom_comment.strip()
+                if table_comment == '':
+                    schema_table += '\n[\n'
+                else:
+                    schema_table += f", {table_comment}\n[\n"
+
+                if obj.fields:
+                    field_list = []
+                    for field in obj.fields:
+                        field_comment = ''
+                        if field.custom_comment:
+                            field_comment = field.custom_comment.strip()
+                        if field_comment == '':
+                            field_list.append(f"({field.field_name}:{field.field_type})")
+                        else:
+                            field_list.append(f"({field.field_name}:{field.field_type}, {field_comment})")
+                    schema_table += ",\n".join(field_list)
+                schema_table += '\n]\n'
+                schema_str += schema_table
 
             SQLBotLogUtil.info(f"[BusinessDBService] 获取表结构完成, 表数量={len(tables)}, 字段数量={len(fields)}")
-            return tables_json, fields_json
+            return schema_str, tables_json, fields_json
 
         except Exception as e:
             SQLBotLogUtil.error(f"[BusinessDBService] 获取表结构失败: {e}")
             import traceback
             SQLBotLogUtil.error(f"[BusinessDBService] 异常详情: {traceback.format_exc()}")
-            return "[]", "[]"
+            return "", "[]", "[]"
 
     def preprocess(
         self,
@@ -292,11 +328,12 @@ class BusinessDBService:
         # 3. 获取表结构
         tables_json = "[]"
         fields_json = "[]"
+        db_schema = ""
         if datasource_context:
             try:
                 # embedding_enabled 由 TABLE_EMBEDDING_ENABLED 配置决定
                 embedding_enabled = settings.TABLE_EMBEDDING_ENABLED
-                tables_json, fields_json = self._get_table_schema(
+                db_schema, tables_json, fields_json = self._get_table_schema(
                     current_user,
                     datasource_context.id,
                     question,
@@ -410,6 +447,7 @@ class BusinessDBService:
             chart_history_messages=chart_messages,
             tables_json=tables_json,
             fields_json=fields_json,
+            db_schema=db_schema,
 
             # Chat 配置
             chat_brief_generate=chat.brief_generate if chat else False,
