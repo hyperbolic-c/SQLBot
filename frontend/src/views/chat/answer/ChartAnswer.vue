@@ -206,7 +206,10 @@ const sendMessage = async () => {
                   targetRecordId: recordId
                 })
                 if (recordId) {
-                  getChatData(recordId)
+                  console.log('[DEBUG] sql-data: calling getChatData')
+                  getChatData(recordId).then(() => {
+                    console.log('[DEBUG] sql-data: getChatData completed, record.data:', !!_currentChat.value.records[index.value]?.data)
+                  })
                 } else {
                   console.error('[ERROR] sql-data: recordId is undefined, index.value:', index.value)
                   console.log('[DEBUG] _currentChat.records:', JSON.stringify(_currentChat.value.records.map(r => ({id: r.id, question: r.question}))))
@@ -217,6 +220,10 @@ const sendMessage = async () => {
                 _currentChat.value.records[index.value].chart_answer = chart_answer
                 break
               case 'chart':
+                console.log('[DEBUG] chart event:', {
+                  indexValue: index.value,
+                  chartContent: data.content?.substring(0, 100)
+                })
                 _currentChat.value.records[index.value].chart = data.content
                 break
               case 'datasource':
@@ -229,11 +236,14 @@ const sendMessage = async () => {
                   indexValue: index.value,
                   currentRecordId: currentRecord.id,
                   hasChart: !!currentRecord.chart,
-                  hasData: !!currentRecord.data
+                  hasData: !!currentRecord.data,
+                  recordData: _currentChat.value.records[index.value]?.data
                 })
                 currentRecord.isTyping = false
                 _currentChat.value.records[index.value].isTyping = false
+                console.log('[DEBUG] finish: about to emit finish')
                 emits('finish', currentRecord.id)
+                console.log('[DEBUG] finish: emit complete')
                 break
             }
             await nextTick()
