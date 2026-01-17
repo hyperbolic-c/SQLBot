@@ -547,6 +547,7 @@ def save_question(session: SessionDep, current_user: CurrentUser, question: Chat
     session.flush()
     session.refresh(record)
     result.id = record.id
+    print(f"[DEBUG] save_question: chat_id={question.chat_id}, question={question.question[:20]}..., record_id={record.id}")
     session.commit()
 
     return result
