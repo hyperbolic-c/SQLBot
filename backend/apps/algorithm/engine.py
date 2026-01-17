@@ -33,6 +33,7 @@ from apps.template.generate_guess_question.generator import get_guess_question_t
 from apps.template.select_datasource.generator import get_datasource_template
 from apps.template.filter.generator import get_permissions_template
 from apps.datasource.crud.permission import get_row_permission_filters
+from apps.datasource.models.datasource import CoreDatasource
 from common.error import SingleMessageError, SQLBotDBError, SQLBotDBConnectionError, ParseSQLResultError
 from common.utils.data_format import DataFormat
 from common.utils.utils import SQLBotLogUtil, extract_nested_json
@@ -136,7 +137,6 @@ class AlgorithmEngine:
             return None
 
         from sqlalchemy import select
-        from apps.datasource.models.datasource import CoreDatasource
 
         # 查询可用的数据源列表
         stmt = select(CoreDatasource.id, CoreDatasource.name, CoreDatasource.description).where(
