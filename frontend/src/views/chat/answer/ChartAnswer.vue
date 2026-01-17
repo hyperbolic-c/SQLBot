@@ -130,37 +130,35 @@ const sendMessage = async () => {
 
       let chunk = decoder.decode(value, { stream: true })
       tempResult += chunk
-      // 使用 [^]*? (匹配任意字符包括换行) 确保正确匹配完整的 SSE 事件块
-      // 避免正则在 content 字段中的 } 处提前停止
-      const split = tempResult.match(/data:[^]*?\n\n/g)
-      if (split) {
-        chunk = split.join('')
-        tempResult = tempResult.replace(chunk, '')
-      } else {
+      // 使用非贪婪模式 [^]*? 匹配直到 \n\n，确保正确匹配完整的 SSE 事件块
+      // 不使用全局匹配，而是逐个提取事件并处理
+      const eventMatch = tempResult.match(/data:[^]*?\n\n/)
+      if (!eventMatch) {
         continue
       }
+      chunk = eventMatch[0]
+      // 移除已处理的事件，保留剩余数据供下次使用
+      tempResult = tempResult.substring(chunk.length)
       if (chunk && chunk.startsWith('data:{')) {
-        if (split) {
-          for (const str of split) {
-            let data
-            try {
-              data = JSONBig.parse(str.replace('data:{', '{'))
-            } catch (err) {
-              console.error('JSON string:', str)
-              throw err
-            }
+        let data
+        try {
+          data = JSONBig.parse(chunk.replace('data:{', '{'))
+        } catch (err) {
+          console.error('JSON string:', chunk)
+          throw err
+        }
 
-            if (data.code && data.code !== 200) {
-              ElMessage({
-                message: data.msg,
-                type: 'error',
-                showClose: true,
-              })
-              _loading.value = false
-              return
-            }
+        if (data.code && data.code !== 200) {
+          ElMessage({
+            message: data.msg,
+            type: 'error',
+            showClose: true,
+          })
+          _loading.value = false
+          return
+        }
 
-            switch (data.type) {
+        switch (data.type) {
               case 'id':
                 console.log('[DEBUG] id event:', { indexValue: index.value, id: data.id, oldId: currentRecord.id })
                 currentRecord.id = data.id
@@ -247,8 +245,6 @@ const sendMessage = async () => {
                 break
             }
             await nextTick()
-          }
-        }
       }
     }
   } catch (error) {

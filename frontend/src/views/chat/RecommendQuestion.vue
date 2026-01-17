@@ -93,54 +93,51 @@ async function getRecommendQuestions(articles_number: number) {
 
       let chunk = decoder.decode(value, { stream: true })
       tempResult += chunk
-      const split = tempResult.match(/data:.*}\n\n/g)
-      if (split) {
-        chunk = split.join('')
-        tempResult = tempResult.replace(chunk, '')
-      } else {
+      // 使用非贪婪模式 [^]*? 匹配直到 \n\n，确保正确匹配完整的 SSE 事件块
+      // 不使用全局匹配，而是逐个提取事件并处理
+      const eventMatch = tempResult.match(/data:[^]*?\n\n/)
+      if (!eventMatch) {
         continue
       }
-
+      chunk = eventMatch[0]
+      // 移除已处理的事件，保留剩余数据供下次使用
+      tempResult = tempResult.substring(chunk.length)
       if (chunk && chunk.startsWith('data:{')) {
-        if (split) {
-          for (const str of split) {
-            let data
-            try {
-              data = JSON.parse(str.replace('data:{', '{'))
-            } catch (err) {
-              console.error('JSON string:', str)
-              throw err
-            }
+        let data
+        try {
+          data = JSON.parse(chunk.replace('data:{', '{'))
+        } catch (err) {
+          console.error('JSON string:', chunk)
+          throw err
+        }
 
-            if (data.code && data.code !== 200) {
-              ElMessage({
-                message: data.msg,
-                type: 'error',
-                showClose: true,
-              })
-              return
-            }
+        if (data.code && data.code !== 200) {
+          ElMessage({
+            message: data.msg,
+            type: 'error',
+            showClose: true,
+          })
+          return
+        }
 
-            switch (data.type) {
-              case 'recommended_question':
-                if (
-                  data.content &&
-                  data.content.length > 0 &&
-                  startsWith(data.content.trim(), '[') &&
-                  endsWith(data.content.trim(), ']')
-                ) {
-                  if (_currentChat.value?.records) {
-                    for (let record of _currentChat.value.records) {
-                      if (record.id === props.recordId) {
-                        record.recommended_question = data.content
+        switch (data.type) {
+          case 'recommended_question':
+            if (
+              data.content &&
+              data.content.length > 0 &&
+              startsWith(data.content.trim(), '[') &&
+              endsWith(data.content.trim(), ']')
+            ) {
+              if (_currentChat.value?.records) {
+                for (let record of _currentChat.value.records) {
+                  if (record.id === props.recordId) {
+                    record.recommended_question = data.content
 
-                        await nextTick()
-                      }
-                    }
+                    await nextTick()
                   }
                 }
+              }
             }
-          }
         }
       }
     }
