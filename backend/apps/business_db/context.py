@@ -103,7 +103,6 @@ class AlgorithmContext(BaseModel):
     chat_record_id: Optional[int] = None
     question: str
     regenerate_record_id: Optional[int] = None
-    assistant_id: Optional[int] = None
 
     # 业务配置 (预加载)
     terminologies: List[TerminologyContext] = []

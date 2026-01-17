@@ -333,7 +333,7 @@ async def question_answer_inner(session: SessionDep, current_user: CurrentUser, 
 
 
 async def stream_sql_new(session: SessionDep, current_user: CurrentUser, request_question: ChatQuestion,
-                         current_assistant: Optional[CurrentAssistant] = None, in_chat: bool = True,
+                         in_chat: bool = True,
                          stream: bool = True,
                          finish_step: ChatFinishStep = ChatFinishStep.GENERATE_CHART, embedding: bool = False):
     """
@@ -363,7 +363,6 @@ async def stream_sql_new(session: SessionDep, current_user: CurrentUser, request
                 question=request_question.question,
                 datasource_id=None,
                 ai_model_id=request_question.ai_modal_id,
-                assistant_id=current_assistant.id if current_assistant else None,
                 regenerate_record_id=request_question.regenerate_record_id,
                 language=request_question.lang,
                 error_msg=request_question.error_msg,
@@ -390,7 +389,7 @@ async def stream_sql(session: SessionDep, current_user: CurrentUser, request_que
     # Check if we should use the new architecture
     if settings.USE_NEW_ALGORITHM:
         return await stream_sql_new(
-            session, current_user, request_question, current_assistant,
+            session, current_user, request_question,
             in_chat, stream, finish_step, embedding
         )
 

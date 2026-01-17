@@ -11,7 +11,6 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
 from apps.datasource.utils.utils import aes_decrypt
-from apps.system.crud.assistant import get_assistant_datasource
 from common.core.config import settings
 from common.utils.utils import SQLBotLogUtil
 
@@ -243,7 +242,6 @@ class BusinessDBService:
         question: str,
         datasource_id: Optional[int] = None,
         ai_model_id: Optional[int] = None,
-        assistant_id: Optional[int] = None,
         regenerate_record_id: Optional[int] = None,
         language: str = "zh-CN",
         error_msg: str = "",
@@ -314,11 +312,7 @@ class BusinessDBService:
 
         # 5. 获取格式化后的训练数据
         data_training_template = ""
-        if assistant_id and assistant_id > 0:
-            data_training_template = self._get_training_template(
-                oid, question, None, assistant_id
-            )
-        elif datasource_context:
+        if datasource_context:
             data_training_template = self._get_training_template(
                 oid, question, datasource_context.id, None
             )
@@ -372,26 +366,6 @@ class BusinessDBService:
                     except Exception:
                         pass
                 SQLBotLogUtil.info(f"[BusinessDBService] 获取 AI 模型: {model.name}")
-        elif assistant_id:
-            # 如果有助手配置，从助手获取数据源
-            try:
-                assistant_ds = get_assistant_datasource(assistant_id)
-                if assistant_ds:
-                    ds_id = assistant_ds.get("datasource_id")
-                    if ds_id:
-                        ds = self.ds_repo.get_datasource(ds_id)
-                        if ds:
-                            datasource_context = DatasourceContext(
-                                id=ds.id,
-                                name=ds.name,
-                                type=ds.type,
-                                description=ds.description,
-                                configuration=ds.configuration,
-                                table_relation=ds.table_relation,
-                            )
-                            engine = ds.type
-            except Exception as e:
-                SQLBotLogUtil.error(f"[BusinessDBService] 获取助手数据源失败: {e}")
 
         # 9. 构建上下文 - 包含所有预加载的数据
         # 创建用户上下文
@@ -409,7 +383,6 @@ class BusinessDBService:
             chat_id=chat_id,
             question=question,
             regenerate_record_id=regenerate_record_id,
-            assistant_id=assistant_id,
             terminologies=[],  # 预加载的数据已转换为模板字符串
             data_training=[],
             chat_history=[],  # 预加载的消息历史
@@ -624,7 +597,6 @@ class BusinessDBService:
         question: str,
         datasource_id: Optional[int] = None,
         ai_model_id: Optional[int] = None,
-        assistant_id: Optional[int] = None,
         regenerate_record_id: Optional[int] = None,
         language: str = "zh-CN",
         error_msg: str = "",
@@ -649,7 +621,6 @@ class BusinessDBService:
             question: 用户问题
             datasource_id: 数据源 ID
             ai_model_id: AI 模型 ID
-            assistant_id: 助手 ID
             regenerate_record_id: 重新生成记录 ID
             language: 语言
             error_msg: 错误信息
@@ -674,7 +645,6 @@ class BusinessDBService:
             question=question,
             datasource_id=datasource_id,
             ai_model_id=ai_model_id,
-            assistant_id=assistant_id,
             regenerate_record_id=regenerate_record_id,
             language=language,
             error_msg=error_msg,
