@@ -3,6 +3,7 @@ Business Database Service
 Provides pre-loading and post-processing of business data for algorithm processing.
 """
 
+import asyncio
 import json
 from datetime import datetime as dt
 from typing import Optional, List, Any, Dict, Tuple, Generator
@@ -10,9 +11,9 @@ from typing import Optional, List, Any, Dict, Tuple, Generator
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
-from apps.datasource.utils.utils import aes_decrypt
 from apps.chat.models.chat_model import OperationEnum
 from common.core.config import settings
+from common.utils.crypto import sqlbot_decrypt
 from common.utils.utils import SQLBotLogUtil
 
 from .repository import (
@@ -389,8 +390,8 @@ class BusinessDBService:
                 try:
                     api_domain = model.api_domain
                     if not api_domain.startswith("http"):
-                        api_domain = aes_decrypt(api_domain)
-                    api_key = aes_decrypt(model.api_key) if model.api_key else ""
+                        api_domain = asyncio.run(sqlbot_decrypt(api_domain))
+                    api_key = asyncio.run(sqlbot_decrypt(model.api_key)) if model.api_key else ""
                 except Exception as e:
                     SQLBotLogUtil.error(f"[BusinessDBService] 解密 API 配置失败: {e}")
                     api_domain = model.api_domain
