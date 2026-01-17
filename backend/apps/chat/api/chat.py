@@ -368,6 +368,7 @@ async def stream_sql_new(session: SessionDep, current_user: CurrentUser, request
             print(f"[DEBUG] stream_sql_new: ai_model_id={ai_model_id}, model_name={config.model_name}")
 
             # 调用 process，传入获取到的 ai_model_id
+            SQLBotLogUtil.info(f"[stream_sql_new] 开始生成响应, stream={stream}")
             for event_data in business_service.process(
                 current_user=current_user,
                 chat_id=request_question.chat_id,
@@ -382,7 +383,10 @@ async def stream_sql_new(session: SessionDep, current_user: CurrentUser, request
                 stream=stream,
             ):
                 # event_data 是字典，直接序列化
-                yield f"data: {orjson.dumps(event_data)}\n\n"
+                sse_data = f"data: {orjson.dumps(event_data)}\n\n"
+                SQLBotLogUtil.info(f"[stream_sql_new] SSE输出: type={event_data.get('type')}")
+                yield sse_data
+            SQLBotLogUtil.info(f"[stream_sql_new] 响应生成完成")
 
         except Exception as e:
             traceback.print_exc()
