@@ -713,7 +713,12 @@ class AlgorithmEngine:
             SQLBotLogUtil.warning(f"[AlgorithmEngine] 图表生成流被提前关闭, 已收集内容: {full_chart[:100] if full_chart else 'empty'}")
             if full_chart:
                 self._result.chart_answer = orjson.dumps({'content': full_chart}).decode()
-            raise
+                SQLBotLogUtil.info(f"[AlgorithmEngine] GeneratorExit: 图表答案已保存, 长度={len(full_chart)}")
+                # 尝试解析已收集的内容
+                chart_config = self._parse_chart_config(full_chart)
+                SQLBotLogUtil.info(f"[AlgorithmEngine] GeneratorExit: 图表解析结果: {chart_config}")
+                return chart_config
+            return {"type": "table", "data": {}}
         except Exception as e:
             SQLBotLogUtil.error(f"[AlgorithmEngine] 生成图表失败: {e}")
             yield StreamEvent(
