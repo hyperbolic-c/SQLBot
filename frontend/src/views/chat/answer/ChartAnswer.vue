@@ -130,8 +130,9 @@ const sendMessage = async () => {
 
       let chunk = decoder.decode(value, { stream: true })
       tempResult += chunk
-      // 使用非贪婪匹配 (.*?) 确保每次只匹配一个事件，避免多个事件被合并
-      const split = tempResult.match(/data:.*?}\n\n/g)
+      // 使用 [^]*? (匹配任意字符包括换行) 确保正确匹配完整的 SSE 事件块
+      // 避免正则在 content 字段中的 } 处提前停止
+      const split = tempResult.match(/data:[^]*?\n\n/g)
       if (split) {
         chunk = split.join('')
         tempResult = tempResult.replace(chunk, '')
