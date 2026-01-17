@@ -130,37 +130,36 @@ const sendMessage = async () => {
 
       let chunk = decoder.decode(value, { stream: true })
       tempResult += chunk
-      // 使用非贪婪模式 [^]*? 匹配直到 \n\n，确保正确匹配完整的 SSE 事件块
-      // 不使用全局匹配，而是逐个提取事件并处理
-      const eventMatch = tempResult.match(/data:[^]*?\n\n/)
-      if (!eventMatch) {
+      const split = tempResult.match(/data:.*}\n\n/g)
+      if (split) {
+        chunk = split.join('')
+        tempResult = tempResult.replace(chunk, '')
+      } else {
         continue
       }
-      chunk = eventMatch[0]
-      // 移除已处理的事件，保留剩余数据供下次使用
-      tempResult = tempResult.substring(chunk.length)
       if (chunk && chunk.startsWith('data:{')) {
-        let data
-        try {
-          data = JSONBig.parse(chunk.replace('data:{', '{'))
-        } catch (err) {
-          console.error('JSON string:', chunk)
-          throw err
-        }
+        if (split) {
+          for (const str of split) {
+            let data
+            try {
+              data = JSONBig.parse(str.replace('data:{', '{'))
+            } catch (err) {
+              console.error('JSON string:', str)
+              throw err
+            }
 
-        if (data.code && data.code !== 200) {
-          ElMessage({
-            message: data.msg,
-            type: 'error',
-            showClose: true,
-          })
-          _loading.value = false
-          return
-        }
+            if (data.code && data.code !== 200) {
+              ElMessage({
+                message: data.msg,
+                type: 'error',
+                showClose: true,
+              })
+              _loading.value = false
+              return
+            }
 
-        switch (data.type) {
+            switch (data.type) {
               case 'id':
-                console.log('[DEBUG] id event:', { indexValue: index.value, id: data.id, oldId: currentRecord.id })
                 currentRecord.id = data.id
                 _currentChat.value.records[index.value].id = data.id
                 break
@@ -196,32 +195,13 @@ const sendMessage = async () => {
                 _currentChat.value.records[index.value].sql = data.content
                 break
               case 'sql-data':
-                const recordId = _currentChat.value.records[index.value]?.id
-                console.log('[DEBUG] sql-data event:', {
-                  indexValue: index.value,
-                  currentRecordId: currentRecord.id,
-                  recordsCount: _currentChat.value.records.length,
-                  targetRecordId: recordId
-                })
-                if (recordId) {
-                  console.log('[DEBUG] sql-data: calling getChatData')
-                  getChatData(recordId).then(() => {
-                    console.log('[DEBUG] sql-data: getChatData completed, record.data:', !!_currentChat.value.records[index.value]?.data)
-                  })
-                } else {
-                  console.error('[ERROR] sql-data: recordId is undefined, index.value:', index.value)
-                  console.log('[DEBUG] _currentChat.records:', JSON.stringify(_currentChat.value.records.map(r => ({id: r.id, question: r.question}))))
-                }
+                getChatData(_currentChat.value.records[index.value].id)
                 break
               case 'chart-result':
                 chart_answer += data.reasoning_content
                 _currentChat.value.records[index.value].chart_answer = chart_answer
                 break
               case 'chart':
-                console.log('[DEBUG] chart event:', {
-                  indexValue: index.value,
-                  chartContent: data.content?.substring(0, 100)
-                })
                 _currentChat.value.records[index.value].chart = data.content
                 break
               case 'datasource':
@@ -230,21 +210,12 @@ const sendMessage = async () => {
                 }
                 break
               case 'finish':
-                console.log('[DEBUG] finish event:', {
-                  indexValue: index.value,
-                  currentRecordId: currentRecord.id,
-                  hasChart: !!currentRecord.chart,
-                  hasData: !!currentRecord.data,
-                  recordData: _currentChat.value.records[index.value]?.data
-                })
-                currentRecord.isTyping = false
-                _currentChat.value.records[index.value].isTyping = false
-                console.log('[DEBUG] finish: about to emit finish')
                 emits('finish', currentRecord.id)
-                console.log('[DEBUG] finish: emit complete')
                 break
             }
             await nextTick()
+          }
+        }
       }
     }
   } catch (error) {
@@ -257,30 +228,23 @@ const sendMessage = async () => {
     currentRecord.error = currentRecord.error + 'Error:' + error
     console.error('Error:', error)
     emits('error')
+  } finally {
+    _loading.value = false
   }
 }
 
 const loadingData = ref(false)
 
-function getChatData(recordId?: number): Promise<void> {
-  if (!recordId) {
-    console.log('[DEBUG] getChatData: recordId is undefined, skip')
-    return Promise.resolve()
-  }
+function getChatData(recordId?: number) {
   loadingData.value = true
-  console.log('[DEBUG] getChatData: calling API, recordId:', recordId)
-  return chatApi
+  chatApi
     .get_chart_data(recordId)
     .then((response) => {
-      console.log('[DEBUG] getChatData: API response received, response type:', typeof response, 'has data:', !!response)
       _currentChat.value.records.forEach((record) => {
         if (record.id === recordId) {
           record.data = response
         }
       })
-    })
-    .catch((error) => {
-      console.error('[DEBUG] getChatData: API error:', error.message)
     })
     .finally(() => {
       loadingData.value = false
@@ -295,8 +259,7 @@ function stop() {
 }
 
 onBeforeUnmount(() => {
-  // 只停止 SSE 读取循环，不触发 stop 事件（避免 onChatStop 被重复触发）
-  stopFlag.value = true
+  stop()
 })
 
 onMounted(() => {
