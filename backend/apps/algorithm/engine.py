@@ -452,8 +452,14 @@ class AlgorithmEngine:
             return None
 
         # 获取用户上下文（用于权限检查）
-        from common.core.deps import CurrentUser
-        current_user = CurrentUser(
+        # 创建一个简单的用户对象，get_row_permission_filters 只使用 id, workspace_id, oid
+        class SimpleUser:
+            def __init__(self, id_, workspace_id, oid):
+                self.id = id_
+                self.workspace_id = workspace_id
+                self.oid = oid
+
+        current_user = SimpleUser(
             id=self.context.user_context.id if self.context.user_context else self.context.user_id,
             workspace_id=self.context.user_context.workspace_id if self.context.user_context else self.context.workspace_id,
             oid=self.context.user_context.oid if self.context.user_context else self.context.oid,
