@@ -758,13 +758,18 @@ class BusinessDBService:
 
         # 5. 执行算法
         finish_step = finish_step or ChatFinishStep.GENERATE_CHART
-        SQLBotLogUtil.info(f"[BusinessDBService] 开始执行算法, record_id={record_id}")
+        SQLBotLogUtil.info(f"[BusinessDBService] ========== 开始执行算法流程 ==========")
+        SQLBotLogUtil.info(f"[BusinessDBService] record_id={record_id}, finish_step={finish_step}, in_chat={in_chat}")
+        event_count = 0
         for event in engine.run(
             record_id=record_id,
             finish_step=finish_step,
             in_chat=in_chat,
         ):
-            SQLBotLogUtil.info(f"[BusinessDBService] 收到事件: type={event.type}")
+            event_count += 1
+            SQLBotLogUtil.info(f"[BusinessDBService] ========== 收到事件 #{event_count} ==========")
+            SQLBotLogUtil.info(f"[BusinessDBService] 事件类型: {event.type}")
+            SQLBotLogUtil.info(f"[BusinessDBService] 事件数据: {event.data}")
 
             # 同步保存数据到数据库（与原实现保持一致的保存时机）
             result = engine.get_result()
@@ -862,8 +867,14 @@ class BusinessDBService:
                     'type': event.type
                 }
 
+            # 记录 SSE 数据
+            sse_json = orjson.dumps(sse_data).decode()
+            SQLBotLogUtil.info(f"[BusinessDBService] [SSE OUT #{event_count}] {sse_json}")
+
             yield sse_data
-        SQLBotLogUtil.info(f"[BusinessDBService] 算法执行完成")
+            SQLBotLogUtil.info(f"[BusinessDBService] [SSE OUT #{event_count}] 完成")
+
+        SQLBotLogUtil.info(f"[BusinessDBService] ========== 算法执行完成 (共 {event_count} 个事件) ==========")
 
         SQLBotLogUtil.info(f"[BusinessDBService] 处理完成")
 

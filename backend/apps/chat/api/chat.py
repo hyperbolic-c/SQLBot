@@ -410,18 +410,17 @@ async def stream_sql_new(session: SessionDep, current_user: CurrentUser, request
                 json_str = orjson.dumps(event_data).decode()
                 sse_data = f"data: {json_str}\n\n"
                 event_type = event_data.get('type', '')
-                event_data_content = event_data.get('data', {})
-                if isinstance(event_data_content, dict):
-                    data_len = len(str(event_data_content))
-                elif isinstance(event_data_content, str):
-                    data_len = len(event_data_content)
-                else:
-                    data_len = 0
-                SQLBotLogUtil.info(f"[stream_sql_new] SSE输出: type={event_type}, data_len={data_len}")
-                # 记录完整 SSE 数据用于调试
-                SQLBotLogUtil.info(f"[stream_sql_new] SSE完整数据: {repr(sse_data[:200])}")
+
+                # 详细记录每个 SSE 事件
+                SQLBotLogUtil.info(f"[stream_sql_new] ========== SSE 事件输出 ==========")
+                SQLBotLogUtil.info(f"[stream_sql_new] 事件类型: {event_type}")
+                SQLBotLogUtil.info(f"[stream_sql_new] 完整事件数据: {json_str}")
+                SQLBotLogUtil.info(f"[stream_sql_new] SSE 格式: {repr(sse_data)}")
+
                 yield sse_data
-            SQLBotLogUtil.info(f"[stream_sql_new] 响应生成完成")
+                SQLBotLogUtil.info(f"[stream_sql_new] SSE 事件已输出")
+
+            SQLBotLogUtil.info(f"[stream_sql_new] ========== 响应生成完成 ==========")
 
         except Exception as e:
             traceback.print_exc()
