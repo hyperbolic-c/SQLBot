@@ -20,8 +20,8 @@ class ChatLogCreate:
     base_modal: Optional[str] = None
     messages: Optional[List[Dict[str, Any]]] = None
     reasoning_content: Optional[str] = None
-    start_time: datetime = None
-    finish_time: datetime = None
+    start_time: Optional[datetime] = None
+    finish_time: Optional[datetime] = None
     token_usage: Optional[Dict[str, Any]] = None
 
 

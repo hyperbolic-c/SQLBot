@@ -194,7 +194,10 @@ class AlgorithmEngine:
             return
 
         if self.context.ai_model is None:
+            SQLBotLogUtil.error("[AlgorithmEngine] AI model not configured")
             raise SingleMessageError("AI model not configured")
+
+        SQLBotLogUtil.info(f"[AlgorithmEngine] 初始化 LLM, model={self.context.ai_model.name}")
 
         self._config = LLMConfig(
             model_id=self.context.ai_model.id,
@@ -208,8 +211,13 @@ class AlgorithmEngine:
             config_list=self.context.model_config.get("config_list", []),
         )
 
-        llm_instance = LLMFactory.create_llm(self._config)
-        self._llm = llm_instance.llm
+        try:
+            llm_instance = LLMFactory.create_llm(self._config)
+            self._llm = llm_instance.llm
+            SQLBotLogUtil.info("[AlgorithmEngine] LLM 初始化成功")
+        except Exception as e:
+            SQLBotLogUtil.error(f"[AlgorithmEngine] LLM 初始化失败: {e}")
+            raise
 
     def _build_sql_system_prompt(self) -> str:
         """
@@ -752,18 +760,28 @@ class AlgorithmEngine:
             # 4. 生成 SQL
             sql = ""
             if self.context.ai_model:
-                for event in self._generate_sql():
-                    yield event
+                SQLBotLogUtil.info("[AlgorithmEngine] 开始调用 LLM 生成 SQL")
+                try:
+                    for event in self._generate_sql():
+                        yield event
+                    SQLBotLogUtil.info(f"[AlgorithmEngine] LLM 调用完成, sql_answer={self._result.sql_answer}")
+                except Exception as gen_e:
+                    SQLBotLogUtil.error(f"[AlgorithmEngine] LLM 调用异常: {gen_e}")
+                    import traceback
+                    SQLBotLogUtil.error(f"[AlgorithmEngine] 异常详情: {traceback.format_exc()}")
+                    raise
 
                 # 获取生成的 SQL
                 if self._result.sql_answer:
                     try:
                         sql_data = orjson.loads(self._result.sql_answer)
                         sql = sql_data.get('content', '')
-                    except:
-                        pass
+                        SQLBotLogUtil.info(f"[AlgorithmEngine] SQL 内容长度: {len(sql)}")
+                    except Exception as parse_e:
+                        SQLBotLogUtil.error(f"[AlgorithmEngine] 解析 SQL 答案失败: {parse_e}")
 
             if not sql:
+                SQLBotLogUtil.error("[AlgorithmEngine] SQL 生成为空")
                 raise SingleMessageError("Failed to generate SQL")
 
             # info: sql generated

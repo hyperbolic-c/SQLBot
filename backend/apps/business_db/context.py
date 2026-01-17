@@ -37,7 +37,7 @@ class ChatHistoryContext:
     operate: str
     messages: Optional[List[Dict[str, Any]]]
     reasoning_content: Optional[str]
-    start_time: datetime
+    start_time: Optional[datetime]
     finish_time: Optional[datetime]
     token_usage: Optional[Dict[str, Any]]
 

@@ -196,38 +196,13 @@ class BusinessDBService:
             # 使用仓储的方式获取表结构
             tables_json, fields_json = self.ds_repo.get_table_schema(ds_id, embedding_enabled)
 
-            # 如果启用了 embedding，需要进行向量检索
-            if embedding_enabled and settings.TABLE_EMBEDDING_ENABLED:
-                try:
-                    from apps.datasource.embedding.ds_embedding import get_ds_embedding
-                    embedding_results = get_ds_embedding(
-                        self.session,
-                        FakeUser(),
-                        ds,
-                        question,
-                        settings.TABLE_EMBEDDING_COUNT
-                    )
-                    if embedding_results:
-                        # 使用 embedding 结果构建 schema
-                        tables = json.loads(tables_json) if tables_json else []
-                        fields = json.loads(fields_json) if fields_json else []
-
-                        # 只保留相关的表和字段
-                        relevant_table_ids = set()
-                        relevant_field_ids = set()
-                        for result in embedding_results:
-                            if result.get('table_id'):
-                                relevant_table_ids.add(result['table_id'])
-                            if result.get('field_id'):
-                                relevant_field_ids.add(result['field_id'])
-
-                        # 过滤
-                        tables = [t for t in tables if t.get('id') in relevant_table_ids]
-                        fields = [f for f in fields if f.get('id') in relevant_field_ids]
-
-                        return json.dumps(tables, ensure_ascii=False), json.dumps(fields, ensure_ascii=False)
-                except Exception as embed_e:
-                    SQLBotLogUtil.warning(f"[BusinessDBService] embedding 查询失败: {embed_e}")
+            # 注意：表级别的 embedding 过滤功能需要在表结构 embedding 实现后添加
+            # 当前 get_ds_embedding 是数据源级别的 embedding，不适用于表结构过滤
+            # 如果后续实现了表级别的 embedding 检索，可以使用类似以下逻辑：
+            # if embedding_enabled and settings.TABLE_EMBEDDING_ENABLED:
+            #     from apps.datasource.embedding.table_embedding import get_table_embedding
+            #     embedding_results = get_table_embedding(...)
+            #     # 过滤表和字段
 
             return tables_json, fields_json
         except Exception as e:
