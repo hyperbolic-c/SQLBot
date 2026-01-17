@@ -385,10 +385,15 @@ class BusinessDBService:
         if ai_model_id:
             model = self.model_repo.get_ai_model(ai_model_id)
             if model:
-                # 解密 API key
+                # 解密 API domain 和 API key（复刻 get_default_config 的逻辑）
                 try:
+                    api_domain = model.api_domain
+                    if not api_domain.startswith("http"):
+                        api_domain = aes_decrypt(api_domain)
                     api_key = aes_decrypt(model.api_key) if model.api_key else ""
-                except Exception:
+                except Exception as e:
+                    SQLBotLogUtil.error(f"[BusinessDBService] 解密 API 配置失败: {e}")
+                    api_domain = model.api_domain
                     api_key = ""
                 ai_model_context = AiModelContext(
                     id=model.id,
@@ -397,7 +402,7 @@ class BusinessDBService:
                     base_model=model.base_model,
                     supplier=model.supplier,
                     protocol=model.protocol,
-                    api_domain=model.api_domain,
+                    api_domain=api_domain,
                     api_key=api_key,
                     config=model.config,
                 )
@@ -407,7 +412,7 @@ class BusinessDBService:
                         model_config = json.loads(model.config)
                     except Exception:
                         pass
-                SQLBotLogUtil.info(f"[BusinessDBService] 获取 AI 模型: {model.name}")
+                SQLBotLogUtil.info(f"[BusinessDBService] 获取 AI 模型: {model.name}, api_domain={api_domain}")
 
         # 9. 构建上下文 - 包含所有预加载的数据
         # 创建用户上下文
