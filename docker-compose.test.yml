@@ -1,14 +1,10 @@
 # docker-compose.yml for testing the refactored architecture
-# Usage: docker-compose -f docker-compose.test.yml up -d
+# Usage: docker compose -f docker-compose.test.yml up -d
 
 services:
   sqlbot-refactor:
-    build:
-      context: .
-      dockerfile: Dockerfile.test
-      args:
-        # Change this to match your local original image
-        ORIGINAL_IMAGE: registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-python-pg:latest
+    # Use the pre-built image instead of building
+    image: sqlbot-refacter:v1.0.0
     container_name: sqlbot-refactor-test
     ports:
       - "38000:3000"   # UI
@@ -22,19 +18,18 @@ services:
       - POSTGRES_PASSWORD=Password123@pg
       - USE_NEW_ALGORITHM=true
       - SQL_DEBUG=false
-      - LOG_LEVEL=INFO
-    volumes:
-      # Mount templates for testing
-      - ./backend/templates:/opt/sqlbot/app/backend/templates:ro
-      # Mount tests for verification
-      - ./backend/tests:/opt/sqlbot/app/tests:ro
+      - LOG_LEVEL=DEBUG
+    # volumes:
     depends_on:
-      - postgres-refactor
+      postgres-refactor:
+        condition: service_started
+      mysql-wandasql:
+        condition: service_healthy
     networks:
       - sqlbot-refactor-net
 
   postgres-refactor:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg17
     container_name: postgres-refactor
     environment:
       - POSTGRES_DB=sqlbot
@@ -47,8 +42,31 @@ services:
     networks:
       - sqlbot-refactor-net
 
+  mysql-wandasql:
+    image: mysql:8.0
+    container_name: mysql-wandasql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: 123456
+      MYSQL_DATABASE: wandasql_test
+    ports:
+      - "13306:3306"
+    volumes:
+      - wandasql_mysql_data:/var/lib/mysql
+    command:
+      --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p123456"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - sqlbot-refactor-net
+
 volumes:
   postgres-refactor-data:
+  wandasql_mysql_data:
 
 networks:
   sqlbot-refactor-net:
