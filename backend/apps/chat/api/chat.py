@@ -189,30 +189,50 @@ async def start_chat(session: SessionDep, current_user: CurrentUser):
 @router.post("/recommend_questions/{chat_record_id}", summary=f"{PLACEHOLDER_PREFIX}ask_recommend_questions")
 async def ask_recommend_questions(session: SessionDep, current_user: CurrentUser, chat_record_id: int,
                                   current_assistant: CurrentAssistant, articles_number: Optional[int] = 4):
+    """
+    生成推荐问题（使用新的业务数据层架构）
+
+    流程：
+    1. 获取聊天记录
+    2. 通过 BusinessDBService 预加载所有业务数据
+    3. 通过 AlgorithmEngine 生成推荐问题
+    4. 返回 SSE 流
+    5. 最后统一保存推荐问题到数据库
+    """
+    from apps.business_db.service import BusinessDBService
+    import orjson
+
     def _return_empty():
-        yield 'data:' + orjson.dumps({'content': '[]', 'type': 'recommended_question'}).decode() + '\n\n'
+        yield 'data: ' + orjson.dumps({'content': '[]', 'type': 'recommended_question'}).decode() + '\n\n'
 
-    try:
-        record = get_chat_record_by_id(session, chat_record_id)
+    def _err(e: Exception):
+        yield 'data: ' + orjson.dumps({'content': str(e), 'type': 'error'}).decode() + '\n\n'
 
-        if not record:
-            return StreamingResponse(_return_empty(), media_type="text/event-stream")
+    def generate_response():
+        try:
+            record = session.get(ChatRecord, chat_record_id)
+            if not record:
+                return
 
-        request_question = ChatQuestion(chat_id=record.chat_id, question=record.question if record.question else '')
+            # 创建业务数据服务
+            business_service = BusinessDBService(session)
 
-        llm_service = await LLMService.create(session, current_user, request_question, current_assistant, True)
-        llm_service.set_record(record)
-        llm_service.set_articles_number(articles_number)
-        llm_service.run_recommend_questions_task_async()
-    except Exception as e:
-        traceback.print_exc()
+            # 调用处理流程
+            for event_data in business_service.process_recommend_questions(
+                record_id=chat_record_id,
+                articles_number=articles_number,
+                in_chat=True,
+            ):
+                # 转换为 SSE 格式
+                json_str = orjson.dumps(event_data).decode()
+                sse_data = f"data: {json_str}\n\n"
+                yield sse_data
 
-        def _err(_e: Exception):
-            yield 'data:' + orjson.dumps({'content': str(_e), 'type': 'error'}).decode() + '\n\n'
+        except Exception as e:
+            traceback.print_exc()
+            yield from _err(e)
 
-        return StreamingResponse(_err(e), media_type="text/event-stream")
-
-    return StreamingResponse(llm_service.await_result(), media_type="text/event-stream")
+    return StreamingResponse(generate_response(), media_type="text/event-stream")
 
 
 @router.get("/recent_questions/{datasource_id}", response_model=List[str],
