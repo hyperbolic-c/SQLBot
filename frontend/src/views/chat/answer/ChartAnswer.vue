@@ -130,7 +130,8 @@ const sendMessage = async () => {
 
       let chunk = decoder.decode(value, { stream: true })
       tempResult += chunk
-      const split = tempResult.match(/data:.*}\n\n/g)
+      // 使用非贪婪匹配 (.*?) 确保每次只匹配一个事件，避免多个事件被合并
+      const split = tempResult.match(/data:.*?}\n\n/g)
       if (split) {
         chunk = split.join('')
         tempResult = tempResult.replace(chunk, '')
