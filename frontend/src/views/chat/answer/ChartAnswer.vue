@@ -266,9 +266,9 @@ const sendMessage = async () => {
 
 const loadingData = ref(false)
 
-function getChatData(recordId?: number) {
+function getChatData(recordId?: number): Promise<void> {
   loadingData.value = true
-  chatApi
+  return chatApi
     .get_chart_data(recordId)
     .then((response) => {
       _currentChat.value.records.forEach((record) => {
