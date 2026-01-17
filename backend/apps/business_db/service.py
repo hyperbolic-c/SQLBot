@@ -5,7 +5,7 @@ Provides pre-loading and post-processing of business data for algorithm processi
 
 import json
 from datetime import datetime
-from typing import Optional, List, Any, Dict, Tuple
+from typing import Optional, List, Any, Dict, Tuple, Generator
 
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
