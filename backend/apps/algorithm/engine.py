@@ -937,7 +937,9 @@ class AlgorithmEngine:
 
             # 保存执行数据
             self._result.data = orjson.dumps(result).decode()
-            yield StreamEvent(type="sql-data", data={"content": "execute-success"})
+            # 直接在 sql-data 事件中返回 data，让前端可以直接使用
+            # 避免前端在 index 异常时无法调用 getChatData API 获取数据
+            yield StreamEvent(type="sql-data", data={"content": "execute-success", "data": result.get("data"), "fields": result.get("fields")})
 
             # 7. 检查是否需要停止
             if finish_step.value <= ChatFinishStep.QUERY_DATA.value:
