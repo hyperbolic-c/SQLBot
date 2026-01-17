@@ -2,7 +2,7 @@
 # This builds on the original image and adds the refactored code
 
 # Arguments
-ARG ORIGINAL_IMAGE=registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-python-pg:latest
+ARG ORIGINAL_IMAGE=dataease/sqlbot:v1.5.0
 
 # Stage 1: Copy refactored code
 FROM ${ORIGINAL_IMAGE} AS refactor-tester
@@ -20,10 +20,7 @@ RUN mkdir -p ${SQLBOT_HOME}/app
 
 # Copy the refactored backend code
 # This will override the original backend code with the refactored version
-COPY backend/apps/algorithm/ ${SQLBOT_HOME}/app/apps/algorithm/
-COPY backend/apps/business_db/ ${SQLBOT_HOME}/app/apps/business_db/
-COPY backend/common/core/config.py ${SQLBOT_HOME}/app/common/core/config.py
-COPY backend/apps/chat/api/chat.py ${SQLBOT_HOME}/app/apps/chat/api/chat.py
+COPY backend/ ${SQLBOT_HOME}/app/
 
 # Copy tests (optional)
 COPY backend/tests/ ${SQLBOT_HOME}/app/tests/
