@@ -250,8 +250,6 @@ const sendMessage = async () => {
     currentRecord.error = currentRecord.error + 'Error:' + error
     console.error('Error:', error)
     emits('error')
-  } finally {
-    _loading.value = false
   }
 }
 
