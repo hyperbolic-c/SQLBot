@@ -456,6 +456,21 @@ class AlgorithmEngine:
             err = traceback.format_exc(limit=1, chain=True)
             raise SQLBotDBError(err)
 
+    def _extract_sql_content(self, sql_answer: str) -> str:
+        """
+        从 sql_answer 中提取内层的 content
+        sql_answer 格式为 {"content": "..."}，需要提取内层内容用于解析
+        """
+        if not sql_answer:
+            return sql_answer
+        try:
+            data = orjson.loads(sql_answer)
+            if isinstance(data, dict) and 'content' in data:
+                return data['content']
+        except Exception:
+            pass
+        return sql_answer
+
     def _check_sql(self, res: str) -> tuple[str, Optional[list]]:
         """检查并解析 SQL"""
         json_str = extract_nested_json(res)
@@ -815,12 +830,14 @@ class AlgorithmEngine:
             # info: sql generated
             yield StreamEvent(type="info", data={"msg": "sql generated"})
 
+            # 提取内层 content（sql_answer 格式为 {"content": "..."}）
+            sql_answer = self._extract_sql_content(self._result.sql_answer or "")
+
             # 获取图表类型
-            chart_type = self._get_chart_type_from_sql_answer(self._result.sql_answer or "")
+            chart_type = self._get_chart_type_from_sql_answer(sql_answer)
 
             # 行权限过滤（复刻原结构 LLMService.generate_filter）
             # 只对普通用户（非管理员 id=1）进行权限过滤
-            sql_answer = self._result.sql_answer or ""
             if self._is_normal_user() and sql_answer:
                 # 从 SQL 答案中获取涉及的表
                 try:
@@ -832,13 +849,13 @@ class AlgorithmEngine:
                 if sql_result:
                     SQLBotLogUtil.info(sql_result)
                     sql = self._check_save_sql(res=sql_result)
-            else:
-                # 管理员也需要解析 SQL（用于后续执行）
-                sql = self._check_save_sql(res=sql_answer) if sql_answer else sql
+            # 管理员也需要解析 SQL（用于后续执行）
+            elif sql_answer:
+                sql = self._check_save_sql(res=sql_answer)
 
             # 更新标题
             if self._change_title and self.context.question:
-                brief = self._get_brief_from_sql_answer(self._result.sql_answer or "")
+                brief = self._get_brief_from_sql_answer(sql_answer)
                 llm_brief_generated = bool(brief)
                 if llm_brief_generated or self.context.question.strip() != '':
                     save_brief = brief if (brief and brief != '') else self.context.question.strip()[:20]
