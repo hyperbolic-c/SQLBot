@@ -743,6 +743,14 @@ async function onChartAnswerFinish(id: number) {
   getRecommendQuestionsLoading.value = true
   loading.value = false
   isTyping.value = false
+
+  // 刷新 currentChat，确保 records 数据是最新的
+  const updatedChat = chatList.value.find((c: ChatInfo) => c.id === currentChatId.value)
+  if (updatedChat) {
+    currentChat.value = updatedChat
+    console.debug('[onChartAnswerFinish] 刷新 currentChat, records 数量:', updatedChat.records?.length)
+  }
+
   getRecommendQuestions(id)
 }
 

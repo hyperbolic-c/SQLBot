@@ -735,10 +735,10 @@ class BusinessDBService:
 
             # sql-data 事件前保存 data（与原实现 save_sql_data 在 yield 前一致）
             if event.type == "sql-data" and result and result.data:
-                SQLBotLogUtil.info(f"[BusinessDBService] 保存 data (sql-data 事件)")
+                SQLBotLogUtil.info(f"[BusinessDBService] 保存 data (sql-data 事件), record_id={result.record_id}")
                 self._update_record_field(result.record_id, data=result.data)
-                self.session.flush()
                 self.session.commit()
+                SQLBotLogUtil.info(f"[BusinessDBService] data 已提交, record_id={result.record_id}")
 
             # chart 事件后保存 chart 和 chart_answer（与原实现一致）
             if event.type == "chart" and result:

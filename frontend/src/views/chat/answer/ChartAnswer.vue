@@ -195,7 +195,14 @@ const sendMessage = async () => {
                 _currentChat.value.records[index.value].sql = data.content
                 break
               case 'sql-data':
-                getChatData(_currentChat.value.records[index.value].id)
+                // 使用 currentRecord.id 确保能正确获取数据
+                const recordId = currentRecord.id || _currentChat.value.records[index.value]?.id
+                console.debug('[sql-data] 获取数据, recordId:', recordId, ', currentRecord.id:', currentRecord.id)
+                if (recordId) {
+                  getChatData(recordId)
+                } else {
+                  console.warn('[sql-data] recordId 为空，无法获取数据')
+                }
                 break
               case 'chart-result':
                 chart_answer += data.reasoning_content
@@ -236,15 +243,24 @@ const sendMessage = async () => {
 const loadingData = ref(false)
 
 function getChatData(recordId?: number) {
+  console.debug('[getChatData] 开始获取数据, recordId:', recordId)
+  if (!recordId) {
+    console.warn('[getChatData] recordId 为空，跳过数据获取')
+    return
+  }
   loadingData.value = true
   chatApi
     .get_chart_data(recordId)
     .then((response) => {
+      console.debug('[getChatData] 数据获取成功, recordId:', recordId, ', response:', response ? '有数据' : '空')
       _currentChat.value.records.forEach((record) => {
         if (record.id === recordId) {
           record.data = response
         }
       })
+    })
+    .catch((error) => {
+      console.error('[getChatData] 数据获取失败, recordId:', recordId, ', error:', error)
     })
     .finally(() => {
       loadingData.value = false
