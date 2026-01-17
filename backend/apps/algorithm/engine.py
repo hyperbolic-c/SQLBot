@@ -740,8 +740,17 @@ class AlgorithmEngine:
             SQLBotLogUtil.info(f"[AlgorithmEngine] _parse_chart_config 输入长度: {len(text)}")
             SQLBotLogUtil.info(f"[AlgorithmEngine] _parse_chart_config 输入内容: {text[:200]}")
 
-            # 清理 markdown 代码块
+            # 处理 {"content": "..."} 包装格式
             cleaned_text = text
+            try:
+                outer = orjson.loads(text)
+                if isinstance(outer, dict) and 'content' in outer:
+                    cleaned_text = outer['content']
+                    SQLBotLogUtil.info(f"[AlgorithmEngine] 提取内层content, 长度: {len(cleaned_text)}")
+            except Exception:
+                pass
+
+            # 清理 markdown 代码块
             # 移除 ```json 和 ``` 标记
             cleaned_text = re.sub(r'```json\s*', '', cleaned_text)
             cleaned_text = re.sub(r'```\s*$', '', cleaned_text)
