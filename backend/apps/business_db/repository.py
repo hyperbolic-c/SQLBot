@@ -154,7 +154,7 @@ class ChatLogRepository:
         log_id: int,
         messages: Optional[List[Dict[str, Any]]] = None,
         reasoning_content: Optional[str] = None,
-        finish_time: Optional[datetime] = None,
+        finish_time: Optional[dt] = None,
         token_usage: Optional[Dict[str, Any]] = None,
     ):
         """更新日志"""
