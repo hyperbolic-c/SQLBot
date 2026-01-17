@@ -450,8 +450,11 @@ class AlgorithmEngine:
         try:
             result = exec_sql(ds=ds, sql=sql, origin_column=False)
             SQLBotLogUtil.info(f"[AlgorithmEngine] SQL执行结果: 类型={type(result).__name__}, 行数={len(result) if result else 0}")
-            if result and len(result) > 0:
-                SQLBotLogUtil.info(f"[AlgorithmEngine] SQL执行数据示例: {result[:2]}")
+            if result:
+                if isinstance(result, list) and len(result) > 0:
+                    SQLBotLogUtil.info(f"[AlgorithmEngine] SQL执行数据示例: {result[:2]}")
+                elif isinstance(result, dict):
+                    SQLBotLogUtil.info(f"[AlgorithmEngine] SQL执行数据示例: {result}")
             return result
         except ParseSQLResultError as e:
             raise e
