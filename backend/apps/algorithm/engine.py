@@ -954,7 +954,9 @@ class AlgorithmEngine:
                 # 解析图表配置
                 SQLBotLogUtil.info(f"[AlgorithmEngine] 图表生成完成, chart_answer长度={len(self._result.chart_answer) if self._result.chart_answer else 0}")
                 if self._result.chart_answer:
-                    chart = self._parse_chart_config(self._result.chart_answer)
+                    # 提取内层 content（chart_answer 格式为 {"content": "..."}）
+                    chart_content = self._extract_sql_content(self._result.chart_answer)
+                    chart = self._parse_chart_config(chart_content)
                     SQLBotLogUtil.info(f"[AlgorithmEngine] 图表解析结果: {chart}")
 
                 # 保存图表
