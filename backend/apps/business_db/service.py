@@ -561,26 +561,33 @@ class BusinessDBService:
         使用单一事务，确保所有数据原子性提交
         """
         SQLBotLogUtil.info(f"[BusinessDBService] 开始后处理, record_id={result.record_id}")
+        SQLBotLogUtil.info(f"[BusinessDBService] postprocess 数据: sql={bool(result.sql)}, sql_answer={bool(result.sql_answer)}, data={bool(result.data)}, chart={bool(result.chart)}, chart_answer={bool(result.chart_answer)}, finish={result.finish}")
 
         try:
             # 1. 保存 SQL 相关
             if result.sql_answer:
+                SQLBotLogUtil.info(f"[BusinessDBService] 保存 sql_answer, 长度={len(result.sql_answer)}")
                 self._update_record_field(result.record_id, sql_answer=result.sql_answer)
             if result.sql:
+                SQLBotLogUtil.info(f"[BusinessDBService] 保存 sql, 长度={len(result.sql)}")
                 self._update_record_field(result.record_id, sql=result.sql)
 
             # 2. 保存图表相关
             if result.chart_answer:
+                SQLBotLogUtil.info(f"[BusinessDBService] 保存 chart_answer, 长度={len(result.chart_answer)}")
                 self._update_record_field(result.record_id, chart_answer=result.chart_answer)
             if result.chart:
+                SQLBotLogUtil.info(f"[BusinessDBService] 保存 chart, 长度={len(result.chart)}")
                 self._update_record_field(result.record_id, chart=result.chart)
 
             # 3. 保存执行数据
             if result.data:
+                SQLBotLogUtil.info(f"[BusinessDBService] 保存 data, 长度={len(result.data)}")
                 self._update_record_field(result.record_id, data=result.data)
 
             # 4. 保存错误信息
             if result.error:
+                SQLBotLogUtil.info(f"[BusinessDBService] 保存 error")
                 self._update_record_field(
                     result.record_id,
                     error=result.error,
@@ -589,6 +596,7 @@ class BusinessDBService:
                 )
             elif result.finish:
                 # 5. 完成记录（无错误时）
+                SQLBotLogUtil.info(f"[BusinessDBService] 设置 finish=true")
                 self._update_record_field(
                     result.record_id,
                     finish=True,
@@ -597,6 +605,7 @@ class BusinessDBService:
 
             # 6. 更新聊天标题
             if result.update_chat and result.update_chat.brief:
+                SQLBotLogUtil.info(f"[BusinessDBService] 更新聊天标题: {result.update_chat.brief}")
                 self._update_chat_brief(
                     result.chat_id,
                     result.update_chat.brief,
@@ -604,9 +613,10 @@ class BusinessDBService:
                 )
 
             # 统一提交事务
+            SQLBotLogUtil.info(f"[BusinessDBService] 执行 flush 和 commit")
             self.session.flush()
             self.session.commit()
-            SQLBotLogUtil.info(f"[BusinessDBService] 后处理完成，数据已提交")
+            SQLBotLogUtil.info(f"[BusinessDBService] postprocess 完成，数据已提交")
         except Exception as e:
             self.session.rollback()
             SQLBotLogUtil.error(f"[BusinessDBService] 后处理失败: {e}")

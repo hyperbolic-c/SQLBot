@@ -976,6 +976,9 @@ class AlgorithmEngine:
             if self._current_log:
                 self._result.logs.append(self._current_log)
 
+            # 记录所有待保存的数据
+            SQLBotLogUtil.info(f"[AlgorithmEngine] 准备返回 finish, result 数据: sql={bool(self._result.sql)}, sql_answer={bool(self._result.sql_answer)}, data={bool(self._result.data)}, chart={bool(self._result.chart)}, chart_answer={bool(self._result.chart_answer)}, finish={self._result.finish}")
+
             yield StreamEvent(type="finish", data={})
 
         except Exception as e:
