@@ -180,65 +180,54 @@ class BusinessDBService:
     ) -> tuple:
         """
         获取表结构
-        复刻 apps.datasource.crud.datasource.get_table_schema
+
+        复刻 apps.datasource.curd.datasource.get_table_schema 和 get_table_obj_by_ds
+        返回格式与原结构一致，用于算法引擎构建 schema 文本
         """
         try:
-            from apps.datasource.crud.datasource import get_table_schema as original_get_table_schema
+            from apps.datasource.crud.datasource import get_table_obj_by_ds
             from apps.datasource.models.datasource import CoreDatasource
 
             ds = self.ds_repo.get_datasource(ds_id)
             if not ds:
                 return "[]", "[]"
 
-            # 调用原结构的 get_table_schema 函数（包含 embedding 过滤和权限检查）
-            schema_str = original_get_table_schema(
+            # 获取表对象（包含字段信息）- 复刻原结构
+            table_objs = get_table_obj_by_ds(
                 session=self.session,
                 current_user=current_user,
-                ds=ds,
-                question=question,
-                embedding=embedding_enabled
+                ds=ds
             )
 
-            if not schema_str:
+            if len(table_objs) == 0:
                 return "[]", "[]"
 
-            # 解析 schema_str 以获取 tables_json 和 fields_json
-            # 格式: 【DB_ID】xxx\n【Schema】\n# Table: xxx\n[(field1:type,comment),...]
+            # 构建表结构列表
             tables = []
             fields = []
 
-            import re
-            # 匹配表定义块
-            table_pattern = r'# Table:\s*(?:[\w\.]+\.)?(\w+)(?:,\s*(.+))?\s*\n\[(.*?)\]'
-            field_pattern = r'\(([\w]+):([\w]+)(?:,\s*(.+))?\)'
-
-            for match in re.finditer(table_pattern, schema_str, re.DOTALL):
-                table_name = match.group(1)
-                table_comment = match.group(2) or ""
-                fields_str = match.group(3)
-
+            for obj in table_objs:
                 table_id = len(tables) + 1
+                table = obj.table
                 tables.append({
                     "id": table_id,
-                    "tableName": table_name,
-                    "tableComment": table_comment
+                    "tableName": table.table_name,
+                    "tableComment": table.custom_comment or table.table_comment or ""
                 })
 
                 # 解析字段
-                for field_match in re.finditer(field_pattern, fields_str):
-                    field_name = field_match.group(1)
-                    field_type = field_match.group(2)
-                    field_comment = field_match.group(3) or ""
-                    fields.append({
-                        "id": len(fields) + 1,
-                        "tableId": table_id,
-                        "fieldName": field_name,
-                        "fieldType": field_type,
-                        "fieldComment": field_comment
-                    })
+                if obj.fields:
+                    for field in obj.fields:
+                        fields.append({
+                            "id": len(fields) + 1,
+                            "tableId": table_id,
+                            "fieldName": field.field_name,
+                            "fieldType": field.field_type or "",
+                            "fieldComment": field.custom_comment or field.field_comment or ""
+                        })
 
             tables_json = str(tables).replace("'", '"')
-            fields_json = str(fields).replace("'", '"')
+            fields_json = str(fields).replace("'", '"")
 
             SQLBotLogUtil.info(f"[BusinessDBService] 获取表结构完成, 表数量={len(tables)}, 字段数量={len(fields)}")
             return tables_json, fields_json
