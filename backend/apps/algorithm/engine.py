@@ -674,6 +674,9 @@ class AlgorithmEngine:
         token_usage = {}
 
         try:
+            # 初始化 LLM
+            self._init_llm()
+
             for chunk in self._llm.stream(self._chart_messages):
                 content = ""
                 reasoning = ""
@@ -702,9 +705,15 @@ class AlgorithmEngine:
 
             # 保存图表答案
             self._result.chart_answer = orjson.dumps({'content': full_chart}).decode()
+            SQLBotLogUtil.info(f"[AlgorithmEngine] 图表答案已保存, 长度={len(full_chart)}")
 
             return chart_config
 
+        except GeneratorExit:
+            SQLBotLogUtil.warning(f"[AlgorithmEngine] 图表生成流被提前关闭, 已收集内容: {full_chart[:100] if full_chart else 'empty'}")
+            if full_chart:
+                self._result.chart_answer = orjson.dumps({'content': full_chart}).decode()
+            raise
         except Exception as e:
             SQLBotLogUtil.error(f"[AlgorithmEngine] 生成图表失败: {e}")
             yield StreamEvent(
@@ -906,13 +915,17 @@ class AlgorithmEngine:
                     yield event
 
                 # 解析图表配置
+                SQLBotLogUtil.info(f"[AlgorithmEngine] 图表生成完成, chart_answer长度={len(self._result.chart_answer) if self._result.chart_answer else 0}")
                 if self._result.chart_answer:
                     chart = self._parse_chart_config(self._result.chart_answer)
+                    SQLBotLogUtil.info(f"[AlgorithmEngine] 图表解析结果: {chart}")
 
                 # 保存图表
                 if chart:
                     self._result.chart = orjson.dumps(chart).decode()
                     yield StreamEvent(type="chart", data={"content": orjson.dumps(chart).decode()})
+                else:
+                    SQLBotLogUtil.warning(f"[AlgorithmEngine] 图表配置为空, chart_answer={self._result.chart_answer[:200] if self._result.chart_answer else 'None'}")
 
             # 9. 完成
             self._result.finish = True
