@@ -144,7 +144,7 @@ def setup_logging():
     if settings.LOG_LEVEL == "DEBUG" and settings.SQL_DEBUG:
         sql_logger = logging.getLogger('sqlalchemy.engine')
         sql_logger.setLevel(logging.DEBUG)
-        
+
         sql_handler = RotatingFileHandler(
             log_dir / "sql.log",
             maxBytes=10 * 1024 * 1024,
@@ -153,7 +153,43 @@ def setup_logging():
         )
         sql_handler.setFormatter(formatter)
         sql_logger.addHandler(sql_handler)
-        
+
+    # SSE 调试日志专用处理器
+    sse_debug_logger = logging.getLogger('sse_debug')
+    sse_debug_logger.setLevel(logging.DEBUG)
+    sse_debug_handler = RotatingFileHandler(
+        log_dir / "debug.log",
+        maxBytes=10 * 1024 * 1024,
+        backupCount=5,
+        encoding='utf-8'
+    )
+    sse_debug_handler.setFormatter(formatter)
+    sse_debug_logger.addHandler(sse_debug_handler)
+    sse_debug_logger.propagate = False  # 不向上传播
+
+
+class SSEDebugLogUtil:
+    """SSE 调试专用日志工具，输出到 logs/debug.log"""
+
+    @staticmethod
+    def debug(msg: str, *args, **kwargs):
+        logger = logging.getLogger('sse_debug')
+        if logger.isEnabledFor(logging.DEBUG):
+            logger._log(logging.DEBUG, msg, args, **kwargs)
+
+    @staticmethod
+    def info(msg: str, *args, **kwargs):
+        logger = logging.getLogger('sse_debug')
+        if logger.isEnabledFor(logging.INFO):
+            logger._log(logging.INFO, msg, args, **kwargs)
+
+    @staticmethod
+    def error(msg: str, *args, **kwargs):
+        logger = logging.getLogger('sse_debug')
+        if logger.isEnabledFor(logging.ERROR):
+            logger._log(logging.ERROR, msg, args, **kwargs)
+
+
 setup_logging()
 
 

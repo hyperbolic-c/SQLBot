@@ -22,7 +22,7 @@ from common.core.config import settings
 from common.core.deps import CurrentAssistant, SessionDep, CurrentUser, Trans
 from common.utils.command_utils import parse_quick_command
 from common.utils.data_format import DataFormat
-from common.utils.utils import SQLBotLogUtil
+from common.utils.utils import SQLBotLogUtil, SSEDebugLogUtil
 from common.audit.models.log_model import OperationType, OperationModules
 from common.audit.schemas.logger_decorator import LogConfig, system_log
 
@@ -412,15 +412,15 @@ async def stream_sql_new(session: SessionDep, current_user: CurrentUser, request
                 event_type = event_data.get('type', '')
 
                 # 详细记录每个 SSE 事件
-                SQLBotLogUtil.info(f"[stream_sql_new] ========== SSE 事件输出 ==========")
-                SQLBotLogUtil.info(f"[stream_sql_new] 事件类型: {event_type}")
-                SQLBotLogUtil.info(f"[stream_sql_new] 完整事件数据: {json_str}")
-                SQLBotLogUtil.info(f"[stream_sql_new] SSE 格式: {repr(sse_data)}")
+                SSEDebugLogUtil.info(f"[SSE DEBUG] ========== stream_sql_new SSE 输出 ==========")
+                SSEDebugLogUtil.info(f"[SSE DEBUG] 事件类型: {event_type}")
+                SSEDebugLogUtil.info(f"[SSE DEBUG] 完整事件数据: {json_str}")
+                SSEDebugLogUtil.info(f"[SSE DEBUG] SSE 格式: {repr(sse_data)}")
 
                 yield sse_data
-                SQLBotLogUtil.info(f"[stream_sql_new] SSE 事件已输出")
+                SSEDebugLogUtil.info(f"[SSE DEBUG] stream_sql_new SSE 事件已输出")
 
-            SQLBotLogUtil.info(f"[stream_sql_new] ========== 响应生成完成 ==========")
+            SSEDebugLogUtil.info(f"[SSE DEBUG] ========== stream_sql_new 响应生成完成 ==========")
 
         except Exception as e:
             traceback.print_exc()

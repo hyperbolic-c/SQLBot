@@ -14,7 +14,7 @@ from sqlalchemy import or_
 from apps.chat.models.chat_model import OperationEnum
 from common.core.config import settings
 from common.utils.crypto import sqlbot_decrypt
-from common.utils.utils import SQLBotLogUtil
+from common.utils.utils import SQLBotLogUtil, SSEDebugLogUtil, orjson
 
 from .repository import (
     ChatRepository,
@@ -758,8 +758,8 @@ class BusinessDBService:
 
         # 5. 执行算法
         finish_step = finish_step or ChatFinishStep.GENERATE_CHART
-        SQLBotLogUtil.info(f"[BusinessDBService] ========== 开始执行算法流程 ==========")
-        SQLBotLogUtil.info(f"[BusinessDBService] record_id={record_id}, finish_step={finish_step}, in_chat={in_chat}")
+        SSEDebugLogUtil.info(f"[SSE DEBUG] ========== BusinessDBService.process 开始 ==========")
+        SSEDebugLogUtil.info(f"[SSE DEBUG] record_id={record_id}, finish_step={finish_step}, in_chat={in_chat}")
         event_count = 0
         for event in engine.run(
             record_id=record_id,
@@ -767,9 +767,9 @@ class BusinessDBService:
             in_chat=in_chat,
         ):
             event_count += 1
-            SQLBotLogUtil.info(f"[BusinessDBService] ========== 收到事件 #{event_count} ==========")
-            SQLBotLogUtil.info(f"[BusinessDBService] 事件类型: {event.type}")
-            SQLBotLogUtil.info(f"[BusinessDBService] 事件数据: {event.data}")
+            SSEDebugLogUtil.info(f"[SSE DEBUG] ========== 收到事件 #{event_count} ==========")
+            SSEDebugLogUtil.info(f"[SSE DEBUG] 事件类型: {event.type}")
+            SSEDebugLogUtil.info(f"[SSE DEBUG] 事件数据: {event.data}")
 
             # 同步保存数据到数据库（与原实现保持一致的保存时机）
             result = engine.get_result()
@@ -810,9 +810,9 @@ class BusinessDBService:
             # 在 yield finish 事件之前，执行完整的 postprocess
             # 保存剩余的数据（update_chat, finish 标志等）
             if event.type == "finish":
-                SQLBotLogUtil.info(f"[BusinessDBService] 收到 finish 事件，执行 postprocess")
+                SSEDebugLogUtil.info(f"[SSE DEBUG] 收到 finish 事件，执行 postprocess")
                 self.postprocess(result)
-                SQLBotLogUtil.info(f"[BusinessDBService] postprocess 完成")
+                SSEDebugLogUtil.info(f"[SSE DEBUG] postprocess 完成")
 
             # 生成 SSE 事件，格式与原实现保持一致
             # 原实现格式: {'content': ..., 'type': '...'}，content 在前，type 在后
@@ -869,12 +869,12 @@ class BusinessDBService:
 
             # 记录 SSE 数据
             sse_json = orjson.dumps(sse_data).decode()
-            SQLBotLogUtil.info(f"[BusinessDBService] [SSE OUT #{event_count}] {sse_json}")
+            SSEDebugLogUtil.info(f"[SSE DEBUG] [SSE OUT #{event_count}] {sse_json}")
 
             yield sse_data
-            SQLBotLogUtil.info(f"[BusinessDBService] [SSE OUT #{event_count}] 完成")
+            SSEDebugLogUtil.info(f"[SSE DEBUG] [SSE OUT #{event_count}] 完成")
 
-        SQLBotLogUtil.info(f"[BusinessDBService] ========== 算法执行完成 (共 {event_count} 个事件) ==========")
+        SSEDebugLogUtil.info(f"[SSE DEBUG] ========== BusinessDBService.process 完成 (共 {event_count} 个事件) ==========")
 
         SQLBotLogUtil.info(f"[BusinessDBService] 处理完成")
 

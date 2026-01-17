@@ -36,7 +36,7 @@ from apps.datasource.crud.permission import get_row_permission_filters
 from apps.datasource.models.datasource import CoreDatasource
 from common.error import SingleMessageError, SQLBotDBError, SQLBotDBConnectionError, ParseSQLResultError
 from common.utils.data_format import DataFormat
-from common.utils.utils import SQLBotLogUtil, extract_nested_json
+from common.utils.utils import SQLBotLogUtil, SSEDebugLogUtil, extract_nested_json
 
 from ..business_db.context import AlgorithmContext
 from ..business_db.result import AlgorithmResult, ChatLogCreate, ChatUpdate
@@ -945,27 +945,27 @@ class AlgorithmEngine:
         self._result.record_id = record_id
         self._result.chat_id = self.context.chat_id or 0
 
-        SQLBotLogUtil.info(f"[AlgorithmEngine] ========== run 方法开始执行 ==========")
-        SQLBotLogUtil.info(f"[AlgorithmEngine] record_id={record_id}, in_chat={in_chat}, finish_step={finish_step}")
-        SQLBotLogUtil.info(f"[AlgorithmEngine] question={self.context.question[:100] if self.context.question else 'None'}...")
+        SSEDebugLogUtil.info(f"[SSE DEBUG] ========== AlgorithmEngine.run 开始 ==========")
+        SSEDebugLogUtil.info(f"[SSE DEBUG] record_id={record_id}, in_chat={in_chat}, finish_step={finish_step}")
+        SSEDebugLogUtil.info(f"[SSE DEBUG] question={self.context.question[:100] if self.context.question else 'None'}...")
         event_num = 0
         try:
             # 1. 返回 record_id（与原实现一致，只在 in_chat=True 时输出）
             if in_chat:
                 event_num += 1
-                SQLBotLogUtil.info(f"[AlgorithmEngine] [EVENT #{event_num}] 生成 id 事件: record_id={record_id}")
+                SSEDebugLogUtil.info(f"[SSE DEBUG] [EVENT #{event_num}] 生成 id 事件: record_id={record_id}")
                 yield StreamEvent(type="id", data={"id": record_id})
 
                 if self.context.regenerate_record_id:
                     event_num += 1
-                    SQLBotLogUtil.info(f"[AlgorithmEngine] [EVENT #{event_num}] 生成 regenerate_record_id 事件")
+                    SSEDebugLogUtil.info(f"[SSE DEBUG] [EVENT #{event_num}] 生成 regenerate_record_id 事件")
                     yield StreamEvent(
                         type="regenerate_record_id",
                         data={"regenerate_record_id": self.context.regenerate_record_id}
                     )
 
                 event_num += 1
-                SQLBotLogUtil.info(f"[AlgorithmEngine] [EVENT #{event_num}] 生成 question 事件")
+                SSEDebugLogUtil.info(f"[SSE DEBUG] [EVENT #{event_num}] 生成 question 事件")
                 yield StreamEvent(type="question", data={"question": self.context.question})
 
             # 2. 获取数据源
@@ -1011,7 +1011,7 @@ class AlgorithmEngine:
 
             # info: sql generated
             event_num += 1
-            SQLBotLogUtil.info(f"[AlgorithmEngine] [EVENT #{event_num}] 生成 info 事件: sql generated")
+            SSEDebugLogUtil.info(f"[SSE DEBUG] [EVENT #{event_num}] 生成 info 事件: sql generated")
             yield StreamEvent(type="info", data={"msg": "sql generated"})
 
             # 提取内层 content（sql_answer 格式为 {"content": "..."}）
@@ -1048,19 +1048,19 @@ class AlgorithmEngine:
                         brief_generate=llm_brief_generated,
                     )
                     event_num += 1
-                    SQLBotLogUtil.info(f"[AlgorithmEngine] [EVENT #{event_num}] 生成 brief 事件: {save_brief}")
+                    SSEDebugLogUtil.info(f"[SSE DEBUG] [EVENT #{event_num}] 生成 brief 事件: {save_brief}")
                     yield StreamEvent(type="brief", data={"brief": save_brief})
 
             # 格式化并返回 SQL
             format_sql = self._format_sql(sql)
             event_num += 1
-            SQLBotLogUtil.info(f"[AlgorithmEngine] [EVENT #{event_num}] 生成 sql 事件 (SQL长度: {len(format_sql)})")
+            SSEDebugLogUtil.info(f"[SSE DEBUG] [EVENT #{event_num}] 生成 sql 事件 (SQL长度: {len(format_sql)})")
             yield StreamEvent(type="sql", data={"content": format_sql})
 
             # 5. 检查是否需要停止
             if finish_step.value <= ChatFinishStep.GENERATE_SQL.value:
                 event_num += 1
-                SQLBotLogUtil.info(f"[AlgorithmEngine] [EVENT #{event_num}] 生成 finish 事件 (GENERATE_SQL 停止)")
+                SSEDebugLogUtil.info(f"[SSE DEBUG] [EVENT #{event_num}] 生成 finish 事件 (GENERATE_SQL 停止)")
                 yield StreamEvent(type="finish", data={})
                 self._result.finish = True
                 self._result.finish_time = datetime.now()
@@ -1081,13 +1081,13 @@ class AlgorithmEngine:
             self._result.data = orjson.dumps(result).decode()
             event_num += 1
             data_size = len(self._result.data) if self._result.data else 0
-            SQLBotLogUtil.info(f"[AlgorithmEngine] [EVENT #{event_num}] 生成 sql-data 事件 (data大小: {data_size})")
+            SSEDebugLogUtil.info(f"[SSE DEBUG] [EVENT #{event_num}] 生成 sql-data 事件 (data大小: {data_size})")
             yield StreamEvent(type="sql-data", data={"content": "execute-success"})
 
             # 7. 检查是否需要停止
             if finish_step.value <= ChatFinishStep.QUERY_DATA.value:
                 event_num += 1
-                SQLBotLogUtil.info(f"[AlgorithmEngine] [EVENT #{event_num}] 生成 finish 事件 (QUERY_DATA 停止)")
+                SSEDebugLogUtil.info(f"[SSE DEBUG] [EVENT #{event_num}] 生成 finish 事件 (QUERY_DATA 停止)")
                 yield StreamEvent(type="finish", data={})
                 self._result.finish = True
                 self._result.finish_time = datetime.now()
@@ -1095,7 +1095,7 @@ class AlgorithmEngine:
 
             # 8. 生成图表
             event_num += 1
-            SQLBotLogUtil.info(f"[AlgorithmEngine] [EVENT #{event_num}] 生成 info 事件: chart generated")
+            SSEDebugLogUtil.info(f"[SSE DEBUG] [EVENT #{event_num}] 生成 info 事件: chart generated")
             yield StreamEvent(type="info", data={"msg": "chart generated"})
             chart = {}
             if self.context.ai_model:
@@ -1103,22 +1103,22 @@ class AlgorithmEngine:
                     yield event
 
                 # 解析图表配置
-                SQLBotLogUtil.info(f"[AlgorithmEngine] 图表生成完成, chart_answer长度={len(self._result.chart_answer) if self._result.chart_answer else 0}")
+                SSEDebugLogUtil.info(f"[SSE DEBUG] 图表生成完成, chart_answer长度={len(self._result.chart_answer) if self._result.chart_answer else 0}")
                 if self._result.chart_answer:
                     # 提取内层 content（chart_answer 格式为 {"content": "..."}）
                     chart_content = self._extract_sql_content(self._result.chart_answer)
                     chart = self._parse_chart_config(chart_content)
-                    SQLBotLogUtil.info(f"[AlgorithmEngine] 图表解析结果: {chart}")
+                    SSEDebugLogUtil.info(f"[SSE DEBUG] 图表解析结果: {chart}")
 
                 # 保存图表
                 if chart:
                     self._result.chart = orjson.dumps(chart).decode()
                     event_num += 1
                     chart_str = orjson.dumps(chart).decode()
-                    SQLBotLogUtil.info(f"[AlgorithmEngine] [EVENT #{event_num}] 生成 chart 事件 (长度: {len(chart_str)})")
+                    SSEDebugLogUtil.info(f"[SSE DEBUG] [EVENT #{event_num}] 生成 chart 事件 (长度: {len(chart_str)})")
                     yield StreamEvent(type="chart", data={"content": chart_str})
                 else:
-                    SQLBotLogUtil.warning(f"[AlgorithmEngine] 图表配置为空, chart_answer={self._result.chart_answer[:200] if self._result.chart_answer else 'None'}")
+                    SSEDebugLogUtil.warning(f"[SSE DEBUG] 图表配置为空, chart_answer={self._result.chart_answer[:200] if self._result.chart_answer else 'None'}")
 
             # 注意：推荐问题通过独立的 API 生成，不在此流程中生成
             # 原实现通过 POST /chat/recommend_questions/{chat_record_id} 生成推荐问题
@@ -1135,8 +1135,8 @@ class AlgorithmEngine:
             SQLBotLogUtil.info(f"[AlgorithmEngine] 准备返回 finish, result 数据: sql={bool(self._result.sql)}, sql_answer={bool(self._result.sql_answer)}, data={bool(self._result.data)}, chart={bool(self._result.chart)}, chart_answer={bool(self._result.chart_answer)}, finish={self._result.finish}")
 
             event_num += 1
-            SQLBotLogUtil.info(f"[AlgorithmEngine] [EVENT #{event_num}] 生成 finish 事件 (GENERATE_CHART 完成)")
-            SQLBotLogUtil.info(f"[AlgorithmEngine] ========== run 方法执行完成 (共 {event_num} 个事件) ==========")
+            SSEDebugLogUtil.info(f"[SSE DEBUG] [EVENT #{event_num}] 生成 finish 事件 (GENERATE_CHART 完成)")
+            SSEDebugLogUtil.info(f"[SSE DEBUG] ========== AlgorithmEngine.run 完成 (共 {event_num} 个事件) ==========")
             yield StreamEvent(type="finish", data={})
 
         except Exception as e:
