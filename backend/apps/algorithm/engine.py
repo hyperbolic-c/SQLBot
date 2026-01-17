@@ -225,18 +225,43 @@ class AlgorithmEngine:
         """
         # 获取 SQL 模板
         sql_template = get_sql_template()
+        SQLBotLogUtil.info(f"[_build_sql_system_prompt] sql_template type: {type(sql_template)}")
+
         sql_example = get_sql_example_template(self.context.engine)
+        SQLBotLogUtil.info(f"[_build_sql_system_prompt] sql_example type: {type(sql_example)}, engine: {self.context.engine}")
+        if isinstance(sql_example, str):
+            SQLBotLogUtil.info(f"[_build_sql_system_prompt] sql_example content: {sql_example[:200]}")
 
         # 构建表结构 - 使用原始格式的 db_schema（与原结构一致）
         schema = self.context.db_schema if self.context.db_schema else self._build_schema_text()
 
         # 构建基础 SQL 规则
         base_sql_rules = ""
-        if sql_example:
+        if sql_example and isinstance(sql_example, dict):
             base_sql_rules = sql_example.get('quot_rule', '')
             base_sql_rules += sql_example.get('query_limit', '') if self.context.enable_query_limit else ''
             base_sql_rules += sql_example.get('limit_rule', '')
-            base_sql_rules += sql_example.get('other_rule', {}).get('multi_table_condition', '')
+            other_rule = sql_example.get('other_rule', '')
+            if isinstance(other_rule, str):
+                base_sql_rules += other_rule
+        else:
+            SQLBotLogUtil.warning(f"[_build_sql_system_prompt] sql_example is not a dict, using empty rules")
+
+        # 安全获取 sql_example 的值
+        if isinstance(sql_example, dict):
+            process_check = sql_example.get('process_check', '')
+            basic_sql_examples = sql_example.get('basic_example', '')
+            example_engine = sql_example.get('example_engine', '')
+            example_answer_1 = sql_example.get('example_answer_1_with_limit', '') if self.context.enable_query_limit else sql_example.get('example_answer_1', '')
+            example_answer_2 = sql_example.get('example_answer_2_with_limit', '') if self.context.enable_query_limit else sql_example.get('example_answer_2', '')
+            example_answer_3 = sql_example.get('example_answer_3_with_limit', '') if self.context.enable_query_limit else sql_example.get('example_answer_3', '')
+        else:
+            process_check = ''
+            basic_sql_examples = ''
+            example_engine = ''
+            example_answer_1 = ''
+            example_answer_2 = ''
+            example_answer_3 = ''
 
         # 构建系统提示词
         system_prompt = sql_template['system'].format(
@@ -247,13 +272,13 @@ class AlgorithmEngine:
             terminologies=self.context.terminology_template,
             data_training=self.context.data_training_template,
             custom_prompt=self.context.custom_prompt,
-            process_check=sql_example.get('process_check', ''),
+            process_check=process_check,
             base_sql_rules=base_sql_rules,
-            basic_sql_examples=sql_example.get('basic_example', ''),
-            example_engine=sql_example.get('example_engine', ''),
-            example_answer_1=sql_example.get('example_answer_1_with_limit', '') if self.context.enable_query_limit else sql_example.get('example_answer_1', ''),
-            example_answer_2=sql_example.get('example_answer_2_with_limit', '') if self.context.enable_query_limit else sql_example.get('example_answer_2', ''),
-            example_answer_3=sql_example.get('example_answer_3_with_limit', '') if self.context.enable_query_limit else sql_example.get('example_answer_3', ''),
+            basic_sql_examples=basic_sql_examples,
+            example_engine=example_engine,
+            example_answer_1=example_answer_1,
+            example_answer_2=example_answer_2,
+            example_answer_3=example_answer_3,
         )
 
         return system_prompt
