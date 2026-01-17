@@ -176,37 +176,85 @@ class BusinessDBService:
         ds_id: int,
         question: str,
         embedding_enabled: bool = True
-    ) -> str:
+    ) -> tuple:
         """
         获取表结构
         复刻 apps.datasource.crud.datasource.get_table_schema
         """
         try:
             from apps.datasource.crud.datasource import get_table_schema as original_get_table_schema
-
-            # 需要传入 current_user，这里简化处理
-            # 在实际使用中需要传入正确的用户
-            class FakeUser:
-                oid = 1
+            from apps.datasource.models.datasource import CoreDatasource
 
             ds = self.ds_repo.get_datasource(ds_id)
             if not ds:
-                return "[]"
+                return "[]", "[]"
 
-            # 使用仓储的方式获取表结构
-            tables_json, fields_json = self.ds_repo.get_table_schema(ds_id, embedding_enabled)
+            # 创建用于权限检查的 FakeUser
+            class FakeUser:
+                def __init__(self, oid):
+                    self.oid = oid
 
-            # 注意：表级别的 embedding 过滤功能需要在表结构 embedding 实现后添加
-            # 当前 get_ds_embedding 是数据源级别的 embedding，不适用于表结构过滤
-            # 如果后续实现了表级别的 embedding 检索，可以使用类似以下逻辑：
-            # if embedding_enabled and settings.TABLE_EMBEDDING_ENABLED:
-            #     from apps.datasource.embedding.table_embedding import get_table_embedding
-            #     embedding_results = get_table_embedding(...)
-            #     # 过滤表和字段
+            current_user = FakeUser(self.session.exec(
+                select(CoreDatasource.oid).where(CoreDatasource.id == ds_id)
+            ).first() or 1)
 
+            # 调用原结构的 get_table_schema 函数（包含 embedding 过滤）
+            schema_str = original_get_table_schema(
+                session=self.session,
+                current_user=current_user,
+                ds=ds,
+                question=question,
+                embedding=embedding_enabled
+            )
+
+            if not schema_str:
+                return "[]", "[]"
+
+            # 解析 schema_str 以获取 tables_json 和 fields_json
+            # 格式: 【DB_ID】xxx\n【Schema】\n# Table: xxx\n[(field1:type,comment),...]
+            tables = []
+            fields = []
+
+            import re
+            # 匹配表定义块
+            table_pattern = r'# Table:\s*(?:[\w\.]+\.)?(\w+)(?:,\s*(.+))?\s*\n\[(.*?)\]'
+            field_pattern = r'\(([\w]+):([\w]+)(?:,\s*(.+))?\)'
+
+            for match in re.finditer(table_pattern, schema_str, re.DOTALL):
+                table_name = match.group(1)
+                table_comment = match.group(2) or ""
+                fields_str = match.group(3)
+
+                table_id = len(tables) + 1
+                tables.append({
+                    "id": table_id,
+                    "tableName": table_name,
+                    "tableComment": table_comment
+                })
+
+                # 解析字段
+                for field_match in re.finditer(field_pattern, fields_str):
+                    field_name = field_match.group(1)
+                    field_type = field_match.group(2)
+                    field_comment = field_match.group(3) or ""
+                    fields.append({
+                        "id": len(fields) + 1,
+                        "tableId": table_id,
+                        "fieldName": field_name,
+                        "fieldType": field_type,
+                        "fieldComment": field_comment
+                    })
+
+            tables_json = str(tables).replace("'", '"')
+            fields_json = str(fields).replace("'", '"')
+
+            SQLBotLogUtil.info(f"[BusinessDBService] 获取表结构完成, 表数量={len(tables)}, 字段数量={len(fields)}")
             return tables_json, fields_json
+
         except Exception as e:
             SQLBotLogUtil.error(f"[BusinessDBService] 获取表结构失败: {e}")
+            import traceback
+            SQLBotLogUtil.error(f"[BusinessDBService] 异常详情: {traceback.format_exc()}")
             return "[]", "[]"
 
     def preprocess(
@@ -261,17 +309,18 @@ class BusinessDBService:
             else:
                 SQLBotLogUtil.warning(f"[BusinessDBService] 数据源不存在: {actual_ds_id}")
 
-        # 3. 获取表结构 (如果启用了 embedding)
+        # 3. 获取表结构
         tables_json = "[]"
         fields_json = "[]"
-        if datasource_context and settings.TABLE_EMBEDDING_ENABLED:
+        if datasource_context:
             try:
+                # embedding_enabled 由 TABLE_EMBEDDING_ENABLED 配置决定
+                embedding_enabled = settings.TABLE_EMBEDDING_ENABLED
                 tables_json, fields_json = self._get_table_schema(
                     datasource_context.id,
                     question,
-                    embedding_enabled=True
+                    embedding_enabled=embedding_enabled
                 )
-                SQLBotLogUtil.info(f"[BusinessDBService] 获取表结构完成")
             except Exception as e:
                 SQLBotLogUtil.error(f"[BusinessDBService] 获取表结构失败: {e}")
 
