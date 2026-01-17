@@ -94,6 +94,21 @@ class AlgorithmEngine:
         self._change_title = not context.chat_brief_generate
         self._last_execute_sql_error = ""
 
+    def _is_normal_user(self) -> bool:
+        """判断是否是普通用户（非管理员）"""
+        # 管理员 id 为 1
+        return self.context.user_id != 1
+
+    def _check_save_sql(self, res: str) -> str:
+        """
+        检查并保存 SQL
+        复刻原结构 LLMService.check_save_sql
+        """
+        sql, *_ = self._check_sql(res=res)
+        # 保存 SQL 到结果中，后续 postprocess 会保存
+        self._result.sql = sql
+        return sql
+
     def _get_datasource(self):
         """获取目标数据源连接"""
         if self._ds is not None:
@@ -756,6 +771,24 @@ class AlgorithmEngine:
 
             # 获取图表类型
             chart_type = self._get_chart_type_from_sql_answer(self._result.sql_answer or "")
+
+            # 行权限过滤（复刻原结构 LLMService.generate_filter）
+            # 只对普通用户（非管理员 id=1）进行权限过滤
+            sql_answer = self._result.sql_answer or ""
+            if self._is_normal_user() and sql_answer:
+                # 从 SQL 答案中获取涉及的表
+                try:
+                    sql_data = orjson.loads(sql_answer)
+                    tables = sql_data.get('tables', []) if isinstance(sql_data, dict) else []
+                except Exception:
+                    tables = []
+                sql_result = self._generate_filter(sql, tables) if tables else None
+                if sql_result:
+                    SQLBotLogUtil.info(sql_result)
+                    sql = self._check_save_sql(res=sql_result)
+            else:
+                # 管理员也需要解析 SQL（用于后续执行）
+                sql = self._check_save_sql(res=sql_answer) if sql_answer else sql
 
             # 更新标题
             if self._change_title and self.context.question:
