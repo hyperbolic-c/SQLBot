@@ -199,16 +199,15 @@ class AlgorithmEngine:
 
         SQLBotLogUtil.info(f"[AlgorithmEngine] 初始化 LLM, model={self.context.ai_model.name}")
 
+        # 将 protocol 转换为 model_type 字符串（复刻原 get_default_config 的逻辑）
+        model_type = "openai" if self.context.ai_model.protocol == 1 else "vllm"
+
         self._config = LLMConfig(
             model_id=self.context.ai_model.id,
-            model_name=self.context.ai_model.name,
-            model_type=self.context.ai_model.model_type,
-            base_model=self.context.ai_model.base_model,
-            supplier=self.context.ai_model.supplier,
-            protocol=self.context.ai_model.protocol,
+            model_type=model_type,
+            model_name=self.context.ai_model.base_model,
             api_domain=self.context.ai_model.api_domain,
             api_key=self.context.ai_model.api_key,
-            config_list=self.context.model_config.get("config_list", []),
         )
 
         try:
