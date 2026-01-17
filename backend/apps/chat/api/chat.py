@@ -73,8 +73,10 @@ async def chat_predict_data(session: SessionDep, chat_record_id: int):
 
 @router.get("/record/{chat_record_id}/data", summary=f"{PLACEHOLDER_PREFIX}get_chart_data")
 async def chat_record_data(session: SessionDep, current_user: CurrentUser, chat_record_id: int):
+    SQLBotLogUtil.info(f"[DEBUG] chat_record_data API called: record_id={chat_record_id}, user_id={current_user.id}")
     def inner():
         data = get_chart_data_with_user(chat_record_id=chat_record_id, session=session, current_user=current_user)
+        SQLBotLogUtil.info(f"[DEBUG] chat_record_data returning: record_id={chat_record_id}, data={bool(data)}")
         return format_json_data(data)
 
     return await asyncio.to_thread(inner)
