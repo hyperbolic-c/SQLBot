@@ -1,20 +1,51 @@
 # Dockerfile for testing the refactored architecture
 # This builds on the original image and adds the refactored code
-# docker build -f .\Dockerfile.test -t sqlbot-refacter:v1.1.0 .
+# docker build -f .\Dockerfile.test -t sqlbot-refactor:test .
+# docker build -f .\Dockerfile.test -t sqlbot-refactor:test --build-arg FRONTEND_BUILD=false .
 
 # Arguments
 ARG ORIGINAL_IMAGE=dataease/sqlbot:v1.5.0
+ARG FRONTEND_BUILD=true
 
-# Stage 1: Copy refactored code
+# Stage 1: Build frontend if needed
+FROM --platform=${BUILDPLATFORM} node:20-alpine AS frontend-builder
+ARG FRONTEND_BUILD
+
+# Only build frontend if FRONTEND_BUILD=true
+FROM --platform=${BUILDPLATFORM} node:20-alpine AS sqlbot-ui-builder
+WORKDIR /app
+
+# Copy frontend source
+COPY frontend /tmp/frontend
+
+# Configure npm
+RUN npm config set fund false \
+    && npm config set audit false \
+    && npm config set progress false
+
+# Build frontend only if FRONTEND_BUILD=true
+RUN if [ "$FRONTEND_BUILD" = "true" ]; then \
+    cd /tmp/frontend && \
+    npm install && \
+    npm run build && \
+    mv dist /tmp/frontend-dist; \
+    else \
+    echo "Skipping frontend build"; \
+    fi
+
 FROM ${ORIGINAL_IMAGE} AS refactor-tester
 
 ENV PYTHONUNBUFFERED=1
 ENV SQLBOT_HOME=/opt/sqlbot
 ENV PYTHONPATH=${SQLBOT_HOME}/app
 ENV PATH="${SQLBOT_HOME}/app/.venv/bin:$PATH"
+ENV UI_HOME=${SQLBOT_HOME}/frontend
 
 # Set the new algorithm flag for testing
 ENV USE_NEW_ALGORITHM=true
+
+# Copy frontend build result if available
+COPY --from=sqlbot-ui-builder /tmp/frontend-dist ${UI_HOME}/dist
 
 # Create necessary directories
 RUN mkdir -p ${SQLBOT_HOME}/app
