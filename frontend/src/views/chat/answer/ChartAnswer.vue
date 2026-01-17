@@ -211,6 +211,8 @@ const sendMessage = async () => {
                 }
                 break
               case 'finish':
+                currentRecord.isTyping = false
+                _currentChat.value.records[index.value].isTyping = false
                 emits('finish', currentRecord.id)
                 break
             }
