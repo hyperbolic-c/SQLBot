@@ -397,7 +397,7 @@ async def stream_sql_new(session: SessionDep, current_user: CurrentUser, request
                     data_len = 0
                 SQLBotLogUtil.info(f"[stream_sql_new] SSE输出: type={event_type}, data_len={data_len}")
                 # 记录完整 SSE 数据用于调试
-                SQLBotLogUtil.info(f"[stream_sql_new] SSE完整数据: {sse_data[:200]}...")
+                SQLBotLogUtil.info(f"[stream_sql_new] SSE完整数据: {repr(sse_data[:200])}")
                 yield sse_data
             SQLBotLogUtil.info(f"[stream_sql_new] 响应生成完成")
 

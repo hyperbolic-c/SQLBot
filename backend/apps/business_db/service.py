@@ -49,6 +49,8 @@ class BusinessDBService:
 
     def __init__(self, session: Session):
         self.session = session
+        # 防止commit后对象过期，确保已提交的数据仍可读取
+        self.session.expire_on_commit = False
         self._last_result = None  # 存储上次执行结果
         self.chat_repo = ChatRepository(session)
         self.record_repo = ChatRecordRepository(session)
@@ -497,87 +499,129 @@ class BusinessDBService:
         return record.id
 
     def save_sql_answer(self, record_id: int, answer: str):
-        """保存 SQL 答案"""
-        from apps.chat.models.chat_model import ChatRecord
-        from sqlalchemy import update
-
-        stmt = update(ChatRecord).where(ChatRecord.id == record_id).values(
-            sql_answer=answer,
-        )
-        self.session.execute(stmt)
+        """保存 SQL 答案（立即提交）"""
+        self._update_record_field(record_id, sql_answer=answer)
+        self.session.flush()
         self.session.commit()
 
     def save_sql(self, record_id: int, sql: str):
-        """保存 SQL"""
-        from apps.chat.models.chat_model import ChatRecord
-        from sqlalchemy import update
-
-        stmt = update(ChatRecord).where(ChatRecord.id == record_id).values(
-            sql=sql,
-        )
-        self.session.execute(stmt)
+        """保存 SQL（立即提交）"""
+        self._update_record_field(record_id, sql=sql)
+        self.session.flush()
         self.session.commit()
 
     def save_chart_answer(self, record_id: int, answer: str):
-        """保存图表答案"""
-        from apps.chat.models.chat_model import ChatRecord
-        from sqlalchemy import update
-
-        stmt = update(ChatRecord).where(ChatRecord.id == record_id).values(
-            chart_answer=answer,
-        )
-        self.session.execute(stmt)
+        """保存图表答案（立即提交）"""
+        self._update_record_field(record_id, chart_answer=answer)
+        self.session.flush()
         self.session.commit()
 
     def save_chart(self, record_id: int, chart: str):
-        """保存图表"""
-        from apps.chat.models.chat_model import ChatRecord
-        from sqlalchemy import update
-
-        stmt = update(ChatRecord).where(ChatRecord.id == record_id).values(
-            chart=chart,
-        )
-        self.session.execute(stmt)
+        """保存图表（立即提交）"""
+        self._update_record_field(record_id, chart=chart)
+        self.session.flush()
         self.session.commit()
 
     def save_sql_data(self, record_id: int, data: str):
-        """保存 SQL 执行数据"""
-        from apps.chat.models.chat_model import ChatRecord
-        from sqlalchemy import update
-
-        stmt = update(ChatRecord).where(ChatRecord.id == record_id).values(
-            data=data,
-        )
-        self.session.execute(stmt)
+        """保存 SQL 执行数据（立即提交）"""
+        self._update_record_field(record_id, data=data)
+        self.session.flush()
         self.session.commit()
 
     def save_error(self, record_id: int, message: str):
-        """保存错误信息"""
-        from apps.chat.models.chat_model import ChatRecord
-        from sqlalchemy import update
-
-        stmt = update(ChatRecord).where(ChatRecord.id == record_id).values(
+        """保存错误信息（立即提交）"""
+        self._update_record_field(
+            record_id,
             error=message,
             finish=True,
-            finish_time=dt.now(),
+            finish_time=dt.now()
         )
-        self.session.execute(stmt)
+        self.session.flush()
         self.session.commit()
 
     def finish_record(self, record_id: int):
-        """完成记录"""
-        from apps.chat.models.chat_model import ChatRecord
-        from sqlalchemy import update
-
-        stmt = update(ChatRecord).where(ChatRecord.id == record_id).values(
+        """完成记录（立即提交）"""
+        self._update_record_field(
+            record_id,
             finish=True,
-            finish_time=dt.now(),
+            finish_time=dt.now()
         )
-        self.session.execute(stmt)
+        self.session.flush()
         self.session.commit()
 
     def update_chat_brief(self, chat_id: int, brief: str, brief_generate: bool = False):
-        """更新聊天标题"""
+        """更新聊天标题（立即提交）"""
+        self._update_chat_brief(chat_id, brief, brief_generate)
+        self.session.flush()
+        self.session.commit()
+
+    def postprocess(self, result: AlgorithmResult):
+        """
+        后处理：批量保存算法结果
+        使用单一事务，确保所有数据原子性提交
+        """
+        SQLBotLogUtil.info(f"[BusinessDBService] 开始后处理, record_id={result.record_id}")
+
+        try:
+            # 1. 保存 SQL 相关
+            if result.sql_answer:
+                self._update_record_field(result.record_id, sql_answer=result.sql_answer)
+            if result.sql:
+                self._update_record_field(result.record_id, sql=result.sql)
+
+            # 2. 保存图表相关
+            if result.chart_answer:
+                self._update_record_field(result.record_id, chart_answer=result.chart_answer)
+            if result.chart:
+                self._update_record_field(result.record_id, chart=result.chart)
+
+            # 3. 保存执行数据
+            if result.data:
+                self._update_record_field(result.record_id, data=result.data)
+
+            # 4. 保存错误信息
+            if result.error:
+                self._update_record_field(
+                    result.record_id,
+                    error=result.error,
+                    finish=True,
+                    finish_time=dt.now()
+                )
+            elif result.finish:
+                # 5. 完成记录（无错误时）
+                self._update_record_field(
+                    result.record_id,
+                    finish=True,
+                    finish_time=dt.now()
+                )
+
+            # 6. 更新聊天标题
+            if result.update_chat and result.update_chat.brief:
+                self._update_chat_brief(
+                    result.chat_id,
+                    result.update_chat.brief,
+                    result.update_chat.brief_generate
+                )
+
+            # 统一提交事务
+            self.session.flush()
+            self.session.commit()
+            SQLBotLogUtil.info(f"[BusinessDBService] 后处理完成，数据已提交")
+        except Exception as e:
+            self.session.rollback()
+            SQLBotLogUtil.error(f"[BusinessDBService] 后处理失败: {e}")
+            raise
+
+    def _update_record_field(self, record_id: int, **kwargs):
+        """内部方法：更新记录字段"""
+        from apps.chat.models.chat_model import ChatRecord
+        from sqlalchemy import update
+
+        stmt = update(ChatRecord).where(ChatRecord.id == record_id).values(**kwargs)
+        self.session.execute(stmt)
+
+    def _update_chat_brief(self, chat_id: int, brief: str, brief_generate: bool = False):
+        """内部方法：更新聊天标题"""
         from apps.chat.models.chat_model import Chat
         from sqlalchemy import update
 
@@ -586,47 +630,6 @@ class BusinessDBService:
             brief_generate=brief_generate,
         )
         self.session.execute(stmt)
-        self.session.commit()
-
-    def postprocess(self, result: AlgorithmResult):
-        """
-        后处理：批量保存算法结果
-        """
-        SQLBotLogUtil.info(f"[BusinessDBService] 开始后处理, record_id={result.record_id}")
-
-        # 1. 保存 SQL 相关
-        if result.sql_answer:
-            self.save_sql_answer(result.record_id, result.sql_answer)
-        if result.sql:
-            self.save_sql(result.record_id, result.sql)
-
-        # 2. 保存图表相关
-        if result.chart_answer:
-            self.save_chart_answer(result.record_id, result.chart_answer)
-        if result.chart:
-            self.save_chart(result.record_id, result.chart)
-
-        # 3. 保存执行数据
-        if result.data:
-            self.save_sql_data(result.record_id, result.data)
-
-        # 4. 保存错误信息
-        if result.error:
-            self.save_error(result.record_id, result.error)
-
-        # 5. 完成记录
-        if result.finish:
-            self.finish_record(result.record_id)
-
-        # 6. 更新聊天标题
-        if result.update_chat and result.update_chat.brief:
-            self.update_chat_brief(
-                result.chat_id,
-                result.update_chat.brief,
-                result.update_chat.brief_generate
-            )
-
-        SQLBotLogUtil.info(f"[BusinessDBService] 后处理完成")
 
     def create_chat(self, user_id: int, question: str, datasource: Optional[int] = None) -> int:
         """创建新的聊天会话"""
