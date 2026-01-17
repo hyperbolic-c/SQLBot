@@ -4,13 +4,14 @@ Provides pre-loading and post-processing of business data for algorithm processi
 """
 
 import json
-from datetime import datetime
+from datetime import datetime as dt
 from typing import Optional, List, Any, Dict, Tuple, Generator
 
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
 from apps.datasource.utils.utils import aes_decrypt
+from apps.chat.models.chat_model import OperationEnum
 from common.core.config import settings
 from common.utils.utils import SQLBotLogUtil
 
@@ -434,7 +435,7 @@ class BusinessDBService:
         record = ChatRecord(
             chat_id=chat_id,
             question=question,
-            create_time=datetime.datetime.now(),
+            create_time=dt.now(),
             create_by=user_id,
             datasource=datasource_id,
             engine_type=engine_type,
@@ -509,7 +510,7 @@ class BusinessDBService:
         stmt = update(ChatRecord).where(ChatRecord.id == record_id).values(
             error=message,
             finish=True,
-            finish_time=datetime.datetime.now(),
+            finish_time=dt.now(),
         )
         self.session.execute(stmt)
         self.session.commit()
@@ -521,7 +522,7 @@ class BusinessDBService:
 
         stmt = update(ChatRecord).where(ChatRecord.id == record_id).values(
             finish=True,
-            finish_time=datetime.datetime.now(),
+            finish_time=dt.now(),
         )
         self.session.execute(stmt)
         self.session.commit()

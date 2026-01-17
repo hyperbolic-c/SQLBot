@@ -3,7 +3,7 @@ Repository Layer
 Data access classes for the business database layer.
 """
 
-from datetime import datetime
+from datetime import datetime as dt
 from typing import Optional, List, Any, Dict
 
 from sqlalchemy import and_, select, desc
@@ -31,7 +31,7 @@ class ChatRepository:
     def create_chat(self, create_by: int, question: str, datasource: Optional[int] = None) -> Chat:
         """创建新聊天会话"""
         chat = Chat(
-            create_time=datetime.datetime.now(),
+            create_time=dt.now(),
             create_by=create_by,
             brief=question.strip()[:20] if question else "",
             datasource=datasource,
@@ -72,7 +72,7 @@ class ChatRecordRepository:
         record = ChatRecord(
             chat_id=chat_id,
             question=question,
-            create_time=datetime.datetime.now(),
+            create_time=dt.now(),
             create_by=create_by,
             datasource=datasource,
             engine_type=engine_type,
@@ -99,7 +99,7 @@ class ChatRecordRepository:
         self.update_record_field(
             record_id,
             finish=True,
-            finish_time=datetime.datetime.now(),
+            finish_time=dt.now(),
         )
 
 
@@ -142,7 +142,7 @@ class ChatLogRepository:
             pid=pid,
             ai_modal_id=ai_modal_id,
             base_modal=base_modal,
-            start_time=datetime.datetime.now(),
+            start_time=dt.now(),
         )
         self.session.add(log)
         self.session.flush()
