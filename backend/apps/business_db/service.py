@@ -733,13 +733,18 @@ class BusinessDBService:
             in_chat=in_chat,
         ):
             SQLBotLogUtil.info(f"[BusinessDBService] 收到事件: type={event.type}")
+
+            # 在 yield finish 事件之前，先执行 postprocess 提交数据
+            # 这样前端能在流结束后立即读取到已提交的数据
+            if event.type == "finish":
+                result = engine.get_result()
+                if result:
+                    SQLBotLogUtil.info(f"[BusinessDBService] 收到 finish 事件，执行 postprocess")
+                    self.postprocess(result)
+                    SQLBotLogUtil.info(f"[BusinessDBService] postprocess 完成")
+
             yield {'type': event.type, **event.data}
         SQLBotLogUtil.info(f"[BusinessDBService] 算法执行完成")
-
-        # 6. 后处理：保存结果
-        result = engine.get_result()
-        if result:
-            self.postprocess(result)
 
         SQLBotLogUtil.info(f"[BusinessDBService] 处理完成")
 
