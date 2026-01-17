@@ -789,6 +789,131 @@ class AlgorithmEngine:
         """格式化 SQL"""
         return sqlparse.format(sql, reindent=True)
 
+    def _generate_recommended_questions(self) -> Generator[StreamEvent, None, None]:
+        """
+        生成推荐问题（复刻原 LLMService.generate_recommend_questions_task）
+        在图表生成完成后调用
+        """
+        SQLBotLogUtil.info("[AlgorithmEngine] 开始生成推荐问题")
+
+        # 初始化 LLM
+        self._init_llm()
+
+        # 构建消息
+        guess_msg: List[Union[BaseMessage, dict]] = []
+        guess_msg.append(SystemMessage(
+            content=self._build_recommended_questions_system_prompt()
+        ))
+
+        # 添加历史问题
+        old_questions = self.context.old_questions or []
+        guess_msg.append(HumanMessage(
+            content=self._build_recommended_questions_user_prompt(old_questions)
+        ))
+
+        # 记录日志
+        self._current_log = ChatLogCreate(
+            type=OperationEnum.GENERATE_RECOMMENDED_QUESTIONS.value,
+            operate=OperationEnum.GENERATE_RECOMMENDED_QUESTIONS.value,
+            pid=self._result.record_id,
+            ai_modal_id=self.context.ai_model.id if self.context.ai_model else None,
+            start_time=datetime.now(),
+        )
+
+        full_guess_text = ""
+        token_usage = {}
+
+        try:
+            # 调用 LLM 生成推荐问题
+            for chunk in self._llm.stream(guess_msg):
+                content = ""
+                reasoning = ""
+                if hasattr(chunk, 'content'):
+                    content = chunk.content
+                if hasattr(chunk, 'response_metadata') and chunk.response_metadata:
+                    reasoning = chunk.response_metadata.get('reasoning_content', '')
+
+                full_guess_text += content
+
+                yield StreamEvent(
+                    type="recommended_question",
+                    data={"content": content, "reasoning_content": reasoning}
+                )
+
+            # 结束日志
+            self._current_log.finish_time = datetime.now()
+            self._current_log.messages = [
+                {"type": msg.type, "content": msg.content if hasattr(msg, 'content') else str(msg)}
+                for msg in guess_msg
+            ]
+            self._current_log.token_usage = token_usage
+            self._current_log.reasoning_content = reasoning if 'reasoning' in dir() else ''
+
+            # 保存推荐问题答案
+            self._result.recommended_question_answer = orjson.dumps({'content': full_guess_text}).decode()
+
+            # 解析推荐问题 JSON
+            recommended_question = self._parse_recommended_questions(full_guess_text)
+            self._result.recommended_question = recommended_question
+
+            SQLBotLogUtil.info(f"[AlgorithmEngine] 推荐问题生成完成, 数量={len(recommended_question) if recommended_question else 0}")
+
+        except Exception as e:
+            SQLBotLogUtil.error(f"[AlgorithmEngine] 生成推荐问题失败: {e}")
+            yield StreamEvent(
+                type="error",
+                data={"content": f"生成推荐问题失败: {str(e)}", "type": "error"}
+            )
+            # 不抛出异常，继续完成流程
+
+    def _build_recommended_questions_system_prompt(self) -> str:
+        """构建推荐问题系统提示词"""
+        from apps.template.generate_guess_question.generator import get_guess_question_template
+        template = get_guess_question_template()
+        articles_number = 4  # 默认推荐问题数量
+        return template['system'].format(lang=self.context.language, articles_number=articles_number)
+
+    def _build_recommended_questions_user_prompt(self, old_questions: List[str]) -> str:
+        """构建推荐问题用户提示词"""
+        from apps.template.generate_guess_question.generator import get_guess_question_template
+        template = get_guess_question_template()
+
+        # 构建旧问题字符串
+        old_questions_str = orjson.dumps(old_questions).decode() if old_questions else "[]"
+
+        # 使用 db_schema 构建用户提示词
+        db_schema = self.context.db_schema if self.context.db_schema else self._build_schema_text()
+
+        return template['user'].format(
+            question=self.context.question,
+            schema=db_schema,
+            old_questions=old_questions_str
+        )
+
+    def _parse_recommended_questions(self, text: str) -> str:
+        """解析推荐问题 JSON"""
+        try:
+            # 清理 markdown 代码块
+            import re
+            cleaned_text = re.sub(r'```json\s*', '', text)
+            cleaned_text = re.sub(r'```\s*$', '', cleaned_text)
+            cleaned_text = cleaned_text.strip()
+
+            # 提取 JSON 数组
+            json_match = re.search(r'\[[\s\S]*\]', cleaned_text)
+            if json_match:
+                json_str = json_match.group()
+                questions = orjson.loads(json_str)
+                if isinstance(questions, list):
+                    # 返回 JSON 字符串
+                    return orjson.dumps(questions[:4]).decode()
+
+            # 如果解析失败，返回原始文本
+            return orjson.dumps([]).decode()
+        except Exception as e:
+            SQLBotLogUtil.error(f"[AlgorithmEngine] 解析推荐问题失败: {e}")
+            return orjson.dumps([]).decode()
+
     def run(
         self,
         record_id: int,
@@ -969,6 +1094,13 @@ class AlgorithmEngine:
                     yield StreamEvent(type="chart", data={"content": orjson.dumps(chart).decode()})
                 else:
                     SQLBotLogUtil.warning(f"[AlgorithmEngine] 图表配置为空, chart_answer={self._result.chart_answer[:200] if self._result.chart_answer else 'None'}")
+
+            # 8.5 生成推荐问题（在图表生成后、finish 前）
+            if self.context.ai_model:
+                SQLBotLogUtil.info("[AlgorithmEngine] 开始生成推荐问题")
+                for event in self._generate_recommended_questions():
+                    yield event
+                SQLBotLogUtil.info("[AlgorithmEngine] 推荐问题生成完成")
 
             # 9. 完成
             self._result.finish = True

@@ -174,6 +174,32 @@ class BusinessDBService:
             SQLBotLogUtil.error(f"[BusinessDBService] 获取聊天历史失败: {e}")
             return [], []
 
+    def _get_old_questions(self, datasource_id: int) -> List[str]:
+        """
+        获取同一数据源的历史问题（用于生成推荐问题）
+        """
+        try:
+            from apps.chat.models.chat_model import ChatRecord
+            from sqlalchemy import select, and_
+
+            if not datasource_id:
+                return []
+
+            stmt = select(ChatRecord.question).where(
+                and_(
+                    ChatRecord.datasource == datasource_id,
+                    ChatRecord.question.isnot(None),
+                    ChatRecord.error.is_(None)
+                )
+            ).order_by(ChatRecord.create_time.desc()).limit(20)
+
+            result = self.session.execute(stmt)
+            records = [r.question for r in result if r.question]
+            return records
+        except Exception as e:
+            SQLBotLogUtil.error(f"[BusinessDBService] 获取历史问题失败: {e}")
+            return []
+
     def _get_table_schema(
         self,
         current_user,
@@ -381,6 +407,12 @@ class BusinessDBService:
             sql_messages, chart_messages = self._get_chat_history_messages(chat_id, limit=20)
         SQLBotLogUtil.info(f"[BusinessDBService] 聊天历史: SQL={len(sql_messages)}, Chart={len(chart_messages)}")
 
+        # 7.5 获取历史问题（用于生成推荐问题）
+        old_questions = []
+        if datasource_id:
+            old_questions = self._get_old_questions(datasource_id)
+        SQLBotLogUtil.info(f"[BusinessDBService] 历史问题数量: {len(old_questions)}")
+
         # 8. 获取 AI 模型配置
         ai_model_context = None
         model_config = {}
@@ -460,6 +492,9 @@ class BusinessDBService:
             # Chat 配置
             chat_brief_generate=chat.brief_generate if chat else False,
             chat_engine_type=chat.engine_type if chat else "",
+
+            # 历史问题
+            old_questions=old_questions,
         )
 
         SQLBotLogUtil.info(f"[BusinessDBService] 预处理完成")
@@ -559,13 +594,26 @@ class BusinessDBService:
 
     def postprocess(self, result: AlgorithmResult):
         """
-        后处理：保存剩余数据（finish 标志、chat 标题等）
+        后处理：保存剩余数据（finish 标志、chat 标题、推荐问题等）
         注意：大部分数据已在事件处理时同步保存
         """
         SQLBotLogUtil.info(f"[BusinessDBService] postprocess 开始, record_id={result.record_id}")
 
         try:
-            # 1. 设置 finish 标志（必须最后设置，确保数据完整）
+            # 1. 保存推荐问题
+            if result.recommended_question:
+                SQLBotLogUtil.info(f"[BusinessDBService] 保存推荐问题")
+                self._update_record_field(
+                    result.record_id,
+                    recommended_question=result.recommended_question
+                )
+            if result.recommended_question_answer:
+                self._update_record_field(
+                    result.record_id,
+                    recommended_question_answer=result.recommended_question_answer
+                )
+
+            # 2. 设置 finish 标志（必须最后设置，确保数据完整）
             if result.finish:
                 SQLBotLogUtil.info(f"[BusinessDBService] 设置 finish=true")
                 self._update_record_field(
@@ -574,7 +622,7 @@ class BusinessDBService:
                     finish_time=dt.now()
                 )
 
-            # 2. 更新聊天标题
+            # 3. 更新聊天标题
             if result.update_chat and result.update_chat.brief:
                 SQLBotLogUtil.info(f"[BusinessDBService] 更新聊天标题: {result.update_chat.brief}")
                 self._update_chat_brief(

@@ -152,5 +152,8 @@ class AlgorithmContext(BaseModel):
     chat_brief_generate: bool = False
     chat_engine_type: str = ""
 
+    # 预加载的历史问题（用于生成推荐问题）
+    old_questions: List[str] = []
+
     class Config:
         arbitrary_types_allowed = True
