@@ -449,6 +449,9 @@ class AlgorithmEngine:
 
         try:
             result = exec_sql(ds=ds, sql=sql, origin_column=False)
+            SQLBotLogUtil.info(f"[AlgorithmEngine] SQL执行结果: 类型={type(result).__name__}, 行数={len(result) if result else 0}")
+            if result and len(result) > 0:
+                SQLBotLogUtil.info(f"[AlgorithmEngine] SQL执行数据示例: {result[:2]}")
             return result
         except ParseSQLResultError as e:
             raise e
@@ -731,9 +734,22 @@ class AlgorithmEngine:
         """解析图表配置"""
         try:
             import re
-            json_match = re.search(r'\{[\s\S]*\}', text)
+            SQLBotLogUtil.info(f"[AlgorithmEngine] _parse_chart_config 输入长度: {len(text)}")
+            SQLBotLogUtil.info(f"[AlgorithmEngine] _parse_chart_config 输入内容: {text[:200]}")
+
+            # 清理 markdown 代码块
+            cleaned_text = text
+            # 移除 ```json 和 ``` 标记
+            cleaned_text = re.sub(r'```json\s*', '', cleaned_text)
+            cleaned_text = re.sub(r'```\s*$', '', cleaned_text)
+            cleaned_text = cleaned_text.strip()
+
+            json_match = re.search(r'\{[\s\S]*\}', cleaned_text)
             if json_match:
-                chart_config = json.loads(json_match.group())
+                json_str = json_match.group()
+                SQLBotLogUtil.info(f"[AlgorithmEngine] 找到JSON: {json_str[:100]}...")
+                chart_config = json.loads(json_str)
+                SQLBotLogUtil.info(f"[AlgorithmEngine] 解析成功: {chart_config}")
                 if chart_config.get('type') and chart_config['type'] != 'error':
                     # 处理字段名大小写
                     if chart_config.get('columns'):
@@ -748,6 +764,10 @@ class AlgorithmEngine:
                         if chart_config['axis'].get('series') and chart_config['axis']['series'].get('value'):
                             chart_config['axis']['series']['value'] = chart_config['axis']['series']['value'].lower()
                     return chart_config
+            else:
+                SQLBotLogUtil.warning(f"[AlgorithmEngine] 未找到JSON配置")
+        except json.JSONDecodeError as e:
+            SQLBotLogUtil.error(f"[AlgorithmEngine] JSON解析错误: {e}, 位置: {e.pos}, 内容: {text[e.pos-50:e.pos+50] if e.pos < len(text) else text}")
         except Exception as e:
             SQLBotLogUtil.error(f"[AlgorithmEngine] 解析图表配置失败: {e}")
 
