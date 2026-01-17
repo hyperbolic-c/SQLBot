@@ -365,6 +365,7 @@ async def stream_sql_new(session: SessionDep, current_user: CurrentUser, request
 
             config = loop.run_until_complete(get_default_config())
             ai_model_id = config.model_id
+            print(f"[DEBUG] stream_sql_new: ai_model_id={ai_model_id}, model_name={config.model_name}")
 
             # 调用 process，传入获取到的 ai_model_id
             for event_data in business_service.process(

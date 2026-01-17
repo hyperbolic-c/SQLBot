@@ -198,6 +198,7 @@ class AlgorithmEngine:
             raise SingleMessageError("AI model not configured")
 
         SQLBotLogUtil.info(f"[AlgorithmEngine] 初始化 LLM, model={self.context.ai_model.name}")
+        SQLBotLogUtil.info(f"[AlgorithmEngine] api_domain={self.context.ai_model.api_domain}")
 
         # 将 protocol 转换为 model_type 字符串（复刻原 get_default_config 的逻辑）
         model_type = "openai" if self.context.ai_model.protocol == 1 else "vllm"
@@ -209,6 +210,7 @@ class AlgorithmEngine:
             api_base_url=self.context.ai_model.api_domain,
             api_key=self.context.ai_model.api_key,
         )
+        SQLBotLogUtil.info(f"[AlgorithmEngine] LLMConfig api_base_url={self._config.api_base_url}")
 
         try:
             llm_instance = LLMFactory.create_llm(self._config)
