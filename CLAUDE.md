@@ -103,79 +103,10 @@ API routes are organized in `backend/apps/api.py`. Each module registers its own
 - `/api/v1/datasource` - Data source management
 - `/api/v1/system` - System management
 
-## New Architecture (Business DB + Algorithm Layers)
-
-### Architecture Overview
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     API Layer (chat.py)                         │
-│  - 只负责 HTTP 接收和响应                                        │
-│  - 薄薄的一层，不包含业务逻辑                                     │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  BusinessDBService.process() [Main Entry Point]                 │
-│  ========================                                       │
-│  1. 判断 USE_NEW_ALGORITHM 配置                                  │
-│     - 若禁用：返回 None，由原架构处理                             │
-│     - 若启用：继续执行                                           │
-│                                                                 │
-│  2. 调用 preprocess() - 预处理                                   │
-│     - 加载所有业务数据                                           │
-│                                                                 │
-│  3. 创建聊天记录                                                 │
-│                                                                 │
-│  4. 调用 AlgorithmEngine.run() - 算法处理                        │
-│     - 生成 SQL                                                  │
-│     - 执行 SQL（目标数据库）                                     │
-│     - 生成图表                                                  │
-│                                                                 │
-│  5. 调用 postprocess() - 后处理                                  │
-│     - 批量保存结果                                              │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  AlgorithmEngine.run()                                          │
-│  - NO business database queries during execution                │
-│  - Only accesses target databases (for SQL execution)           │
-│  - Only reads local template files (from backend/templates)     │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### New Modules
-
-#### `backend/apps/business_db/` - Business Data Layer
-- **`context.py`** - AlgorithmContext DTO (contains all pre-loaded data)
-- **`result.py`** - AlgorithmResult DTO (contains all data to save)
-- **`repository.py`** - Repository pattern for data access
-- **`service.py`** - BusinessDBService with `process()` as main entry point
-
-#### `backend/apps/algorithm/` - Algorithm Layer
-- **`engine.py`** - AlgorithmEngine (SQL generation, chart generation)
-
-### Configuration
-
-Enable new architecture with environment variable:
-```bash
-USE_NEW_ALGORITHM=true
-```
-
-### Key Design Principles
-
-1. **Pre-loading**: All business database queries happen in `preprocess()`, not during algorithm execution
-2. **No DB queries in algorithm**: AlgorithmEngine only accesses:
-   - Target databases (for SQL execution)
-   - Local template files (for prompts)
-3. **Batch saving**: All saves happen in `postprocess()`, not step-by-step
-4. **Backward compatible**: Original implementation still available via `USE_NEW_ALGORITHM=false`
-
 ## dev plan
 1. 定义存储聊天记录、用户配置等信息的数据库为业务数据库，用户执行智能问数的数据库为目标数据库。
 2. 目前的项目架构中，后端和主要算法处理流程均为python实现，在主要算法处理流程中，算法根据在处理的过程中，多次访问业务数据库查询到所需的信息。主要算法处理流程相应函数为@backend/apps/chat/api/chat.py 中的question_answer、@backend/apps/chat/task/llm.py 中的run_task。
 3. 将项目重构为：1、将业务数据库的访问、查询、保存功能重构为单独的业务数据层，不再耦合在算法处理部分中，业务数据层在主要算法处理流程开始时，就将处理流程中所需要的全部信息一次性传递给算法端，不再在流程中查询。2、对于流程中间的输出、结果的保存，不再在流程中的步骤保存，而是在处理流程结束后，一次性返回整个流程所需要保存的内容给业务数据层进行保存。3、保留算法部分对目标数据库的访问和执行功能。
 4. 第一个版本：先实现业务数据层的重构，保留其他的后端功能不变，保留从本地文件夹@backend/templates 读取提示词模版的功能。业务数据层的实现放在@backend/apps/business_db 文件夹下，重构的算法实现放在@backend/apps/algorithm 文件夹下。
 5. 确保重构后问数算法主要处理流程与原架构保持完全一致，不允许改动流程、输入、输出，仅将“从业务数据库中查询信息”修改为“从数据模型中读取”。
-6. 确保用户“新建会话”这一步保持原结构的功能，完成“新建会话”后，进入用户“输入问题”步骤，该步骤的数据流由原来的“前端——后端——算法处理（过程中查询业务数据库）”修改为“前端——后端——业务数据层（构建好算法处理流程中所需要的所有数据）——算法处理（不再查询业务数据库。保留对目标数据库的查询、执行，保留从本地读取提示词模板文件内容）”
+6. 确保用户“新建会话”这一步保持原结构的功能，完成“新建会话”后，进入用户“输入问题”步骤，该步骤的数据流由原来的“前端——后端——算法处理（过程中查询业务数据库）”修改为“前端——后端——业务数据层（构建好算法处理流程中所需要的所有数据）——算法处理（不再查询业务数据库。保留对目标数据库的查询、执行，保留从本地读取提示词模板文件内容）”。
