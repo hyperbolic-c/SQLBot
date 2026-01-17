@@ -357,7 +357,6 @@ async def stream_sql_new(session: SessionDep, current_user: CurrentUser, request
             # process() 返回生成器，直接 yield 其内容
             for event_data in business_service.process(
                 user_id=current_user.id,
-                workspace_id=current_user.workspace_id,
                 oid=current_user.oid,
                 chat_id=request_question.chat_id,
                 question=request_question.question,

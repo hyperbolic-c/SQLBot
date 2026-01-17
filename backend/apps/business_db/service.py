@@ -236,7 +236,6 @@ class BusinessDBService:
     def preprocess(
         self,
         user_id: int,
-        workspace_id: int,
         oid: int,
         chat_id: Optional[int],
         question: str,
@@ -371,13 +370,13 @@ class BusinessDBService:
         # 创建用户上下文
         user_context = UserContext(
             id=user_id,
-            workspace_id=workspace_id,
+            workspace_id=oid,  # 使用 oid 作为 workspace_id
             oid=oid,
         )
 
         context = AlgorithmContext(
             user_id=user_id,
-            workspace_id=workspace_id,
+            workspace_id=oid,  # 使用 oid 作为 workspace_id
             oid=oid,
             user_context=user_context,
             chat_id=chat_id,
@@ -591,7 +590,6 @@ class BusinessDBService:
     def process(
         self,
         user_id: int,
-        workspace_id: int,
         oid: int,
         chat_id: Optional[int],
         question: str,
@@ -615,7 +613,6 @@ class BusinessDBService:
 
         Args:
             user_id: 用户 ID
-            workspace_id: 工作空间 ID
             oid: 组织 ID
             chat_id: 聊天会话 ID
             question: 用户问题
@@ -639,7 +636,6 @@ class BusinessDBService:
         # 1. 预处理：加载所有必要数据
         context = self.preprocess(
             user_id=user_id,
-            workspace_id=workspace_id,
             oid=oid,
             chat_id=chat_id,
             question=question,
