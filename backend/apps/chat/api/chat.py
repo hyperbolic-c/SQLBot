@@ -384,7 +384,9 @@ async def stream_sql_new(session: SessionDep, current_user: CurrentUser, request
                 stream=stream,
             ):
                 # event_data 是字典，直接序列化
-                sse_data = f"data: {orjson.dumps(event_data)}\n\n"
+                # orjson.dumps 返回 bytes，需要 decode 成 str，否则会变成 b'...' 格式
+                json_str = orjson.dumps(event_data).decode()
+                sse_data = f"data: {json_str}\n\n"
                 event_type = event_data.get('type', '')
                 event_data_content = event_data.get('data', {})
                 if isinstance(event_data_content, dict):
