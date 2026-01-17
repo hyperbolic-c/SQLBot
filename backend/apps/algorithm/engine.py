@@ -820,8 +820,10 @@ class AlgorithmEngine:
         self._result.record_id = record_id
         self._result.chat_id = self.context.chat_id or 0
 
+        SQLBotLogUtil.info(f"[AlgorithmEngine] run 方法开始执行, record_id={record_id}")
         try:
             # 1. 返回 record_id
+            SQLBotLogUtil.info(f"[AlgorithmEngine] yield id 事件")
             yield StreamEvent(type="id", data={"id": record_id})
 
             if self.context.regenerate_record_id:

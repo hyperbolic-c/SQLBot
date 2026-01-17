@@ -723,12 +723,15 @@ class BusinessDBService:
 
         # 5. 执行算法
         finish_step = finish_step or ChatFinishStep.GENERATE_CHART
+        SQLBotLogUtil.info(f"[BusinessDBService] 开始执行算法, record_id={record_id}")
         for event in engine.run(
             record_id=record_id,
             finish_step=finish_step,
             in_chat=in_chat,
         ):
+            SQLBotLogUtil.info(f"[BusinessDBService] 收到事件: type={event.type}")
             yield {'type': event.type, **event.data}
+        SQLBotLogUtil.info(f"[BusinessDBService] 算法执行完成")
 
         # 6. 后处理：保存结果
         result = engine.get_result()
