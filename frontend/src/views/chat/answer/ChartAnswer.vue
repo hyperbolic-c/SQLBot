@@ -196,7 +196,13 @@ const sendMessage = async () => {
                 _currentChat.value.records[index.value].sql = data.content
                 break
               case 'sql-data':
-                getChatData(_currentChat.value.records[index.value].id)
+                const recordId = _currentChat.value.records[index.value]?.id
+                console.log('[DEBUG] sql-data event, index.value:', index.value, 'recordId:', recordId)
+                if (recordId) {
+                  getChatData(recordId)
+                } else {
+                  console.error('[ERROR] sql-data: recordId is undefined, index.value:', index.value)
+                }
                 break
               case 'chart-result':
                 chart_answer += data.reasoning_content
