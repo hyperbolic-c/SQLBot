@@ -385,7 +385,15 @@ async def stream_sql_new(session: SessionDep, current_user: CurrentUser, request
             ):
                 # event_data 是字典，直接序列化
                 sse_data = f"data: {orjson.dumps(event_data)}\n\n"
-                SQLBotLogUtil.info(f"[stream_sql_new] SSE输出: type={event_data.get('type')}, data_len={len(event_data.get('data', {}) if isinstance(event_data.get('data'), (dict, str)) else 0)}")
+                event_type = event_data.get('type', '')
+                event_data_content = event_data.get('data', {})
+                if isinstance(event_data_content, dict):
+                    data_len = len(str(event_data_content))
+                elif isinstance(event_data_content, str):
+                    data_len = len(event_data_content)
+                else:
+                    data_len = 0
+                SQLBotLogUtil.info(f"[stream_sql_new] SSE输出: type={event_type}, data_len={data_len}")
                 # 记录完整 SSE 数据用于调试
                 SQLBotLogUtil.info(f"[stream_sql_new] SSE完整数据: {sse_data[:200]}...")
                 yield sse_data
