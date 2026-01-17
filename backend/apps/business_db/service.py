@@ -596,8 +596,11 @@ class BusinessDBService:
         from apps.chat.models.chat_model import ChatRecord
         from sqlalchemy import update
 
+        SQLBotLogUtil.info(f"[DEBUG] _update_record_field: record_id={record_id}, kwargs={list(kwargs.keys())}")
         stmt = update(ChatRecord).where(ChatRecord.id == record_id).values(**kwargs)
-        self.session.execute(stmt)
+        result = self.session.execute(stmt)
+        SQLBotLogUtil.info(f"[DEBUG] _update_record_field: rows_affected={result.rowcount}")
+        self.session.flush()
 
     def _update_chat_brief(self, chat_id: int, brief: str, brief_generate: bool = False):
         """内部方法：更新聊天标题"""
