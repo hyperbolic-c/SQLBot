@@ -125,6 +125,15 @@ async function getRecommendQuestionsLLM(articles_number: number) {
                   questions.value = data.content
                   currentChat.value.recommended_question = data.content
                   currentChat.value.recommended_generate = true
+                  // 同时更新 records 中的对应记录，确保 computedMessages 能获取到更新后的值
+                  if (currentChat.value.records && props.recordId) {
+                    for (const record of currentChat.value.records) {
+                      if (record.id === props.recordId) {
+                        record.recommended_question = data.content
+                        break
+                      }
+                    }
+                  }
                   await nextTick()
                 }
             }
