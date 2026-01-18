@@ -15,7 +15,7 @@
 # ------------------------------------------------------------------------------
 # 阶段 1: 基于原版功能正常的 image
 # ------------------------------------------------------------------------------
-FROM dataease/sqlbot:latest AS sqlbot-original
+FROM dataease/sqlbot:v1.5.0 AS sqlbot-original
 
 # 设置环境变量
 ENV SQLBOT_HOME=/opt/sqlbot
@@ -34,7 +34,7 @@ RUN mkdir -p ${APP_HOME}/tests
 COPY backend/ ${APP_HOME}/
 
 # 确保测试文件存在
-COPY tests/ ${APP_HOME}/tests/
+COPY backend/tests/ ${APP_HOME}/tests/
 
 # ------------------------------------------------------------------------------
 # 阶段 3: 安装测试依赖并运行测试
@@ -42,18 +42,13 @@ COPY tests/ ${APP_HOME}/tests/
 WORKDIR ${APP_HOME}
 
 # 安装测试依赖（基于 uv）
-RUN uv sync --extra cpu --no-install-project && \
-    uv pip install pytest>=7.4.3 pytest-cov>=4.1.0 && \
-    uv sync
+# RUN uv sync --extra cpu --no-install-project && \
+#     uv pip install pytest>=7.4.3 pytest-cov>=4.1.0 && \
+#     uv sync
+RUN uv pip install pytest>=7.4.3 pytest-cov>=4.1.0
 
 # 验证重构版本可以正常导入
-RUN python -c "
-from apps.algorithm.schema import AlgorithmInput
-from apps.algorithm.result import AlgorithmResult, AlgorithmLog
-from apps.algorithm.service import AlgorithmService
-from apps.business_db import BusinessDataLayer
-print('✓ All refactored modules imported successfully')
-"
+RUN python -c "from apps.algorithm.schema import AlgorithmInput; from apps.algorithm.result import AlgorithmResult, AlgorithmLog; from apps.algorithm.service import AlgorithmService; from apps.business_db import BusinessDataLayer; print('All refactored modules imported successfully')"
 
 # 运行单元测试
 # 注意: 部分测试需要完整 Docker 环境（/opt/sqlbot），这些测试会在集成测试中覆盖

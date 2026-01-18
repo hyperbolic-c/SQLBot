@@ -3,20 +3,18 @@
 #
 # 使用方法:
 #   1. 构建测试镜像: docker build -f Dockerfile.test -t sqlbot:test-refactor .
-#   2. 运行单元测试: docker-compose -f test_docker_compose.yaml up test
-#   3. 运行集成测试: docker-compose -f test_docker_compose.yaml up integration-test
+#   2. 运行单元测试: docker compose -f test_docker_compose.yaml up test-refactor
+#   3. 运行集成测试: docker compose -f test_docker_compose.yaml up integration-test
 #
 # 或者直接运行:
-#   docker-compose -f test_docker_compose.yaml up --build test
+#   docker compose -f test_docker_compose.yaml up --build test
 
 services:
   # ============================================================================
   # 重构版本测试镜像
   # ============================================================================
   test-refactor:
-    build:
-      context: .
-      dockerfile: Dockerfile.test
+    image: sqlbot:test-refactor
     container_name: sqlbot-test-refactor
     entrypoint: ["python", "-m", "pytest", "tests/", "-v", "--tb=short"]
     environment:
@@ -28,89 +26,89 @@ services:
       # 跳过需要完整环境的测试
       SKIP_DOCKER_TESTS: "true"
     volumes:
+      # 挂载测试文件目录
+      - ./backend/tests:/opt/sqlbot/app/tests
       # 挂载测试结果目录
       - ./test_results:/opt/sqlbot/app/test_results
-      # 挂载日志目录
-      - ./test_logs:/opt/sqlbot/app/logs
     working_dir: /opt/sqlbot/app
 
   # ============================================================================
   # 集成测试 - 同时运行原版和重构版进行对比
   # ============================================================================
   integration-test:
-    build:
-      context: .
-      dockerfile: Dockerfile.test
+    image: sqlbot:test-refactor
     container_name: sqlbot-integration-test
-    entrypoint: ["python", "-c", """
-import subprocess
-import sys
+    entrypoint:
+      - python
+      - -c
+      - |
+        import subprocess
+        import sys
 
-# 运行基本单元测试
-result = subprocess.run(
-    ['python', '-m', 'pytest', 'tests/', '-v', '--tb=short'],
-    cwd='/opt/sqlbot/app'
-)
+        # 运行基本单元测试
+        result = subprocess.run(
+            ['python', '-m', 'pytest', 'tests/', '-v', '--tb=short'],
+            cwd='/opt/sqlbot/app'
+        )
 
-# 导出测试结果
-with open('/opt/sqlbot/app/test_results/integration_report.txt', 'w') as f:
-    f.write('Integration Test Report\n')
-    f.write('=' * 50 + '\n\n')
-    f.write(f'Exit code: {result.returncode}\n')
-    f.write('All refactored modules imported successfully\n')
+        # 导出测试结果
+        with open('/opt/sqlbot/app/test_results/integration_report.txt', 'w') as f:
+            f.write('Integration Test Report\n')
+            f.write('=' * 50 + '\n\n')
+            f.write(f'Exit code: {result.returncode}\n')
+            f.write('All refactored modules imported successfully\n')
 
-sys.exit(result.returncode)
-"""]
+        sys.exit(result.returncode)
     environment:
       PYTHONUNBUFFERED: 1
       PYTHONPATH: /opt/sqlbot/app
       LOG_LEVEL: DEBUG
     volumes:
+      - ./backend/tests:/opt/sqlbot/app/tests
       - ./test_results:/opt/sqlbot/app/test_results
-      - ./test_logs:/opt/sqlbot/app/logs
     working_dir: /opt/sqlbot/app
 
   # ============================================================================
   # 对比测试 - 原版 vs 重构版 API 响应对比
   # ============================================================================
   compare-test:
-    build:
-      context: .
-      dockerfile: Dockerfile.test
+    image: sqlbot:test-refactor
     container_name: sqlbot-compare-test
-    entrypoint: ["python", "-c", """
-import subprocess
-import sys
-import os
+    entrypoint:
+      - python
+      - -c
+      - |
+        import subprocess
+        import sys
+        import os
 
-# 创建对比测试报告目录
-os.makedirs('/opt/sqlbot/app/test_results/compare', exist_ok=True)
+        # 创建对比测试报告目录
+        os.makedirs('/opt/sqlbot/app/test_results/compare', exist_ok=True)
 
-# 运行 API 对比测试
-result = subprocess.run(
-    ['python', '-m', 'pytest', 'tests/', '-v', '-k', 'api', '--tb=short'],
-    cwd='/opt/sqlbot/app'
-)
+        # 运行 API 对比测试
+        result = subprocess.run(
+            ['python', '-m', 'pytest', 'tests/', '-v', '-k', 'api', '--tb=short'],
+            cwd='/opt/sqlbot/app'
+        )
 
-# 生成对比报告
-with open('/opt/sqlbot/app/test_results/compare/api_comparison.txt', 'w') as f:
-    f.write('API Comparison Test Report\n')
-    f.write('=' * 50 + '\n\n')
-    f.write('Testing refactored API endpoints against original specifications:\n')
-    f.write('- AlgorithmInput data model validation\n')
-    f.write('- AlgorithmResult output format validation\n')
-    f.write('- SSE streaming output format validation\n')
-    f.write(f'Test exit code: {result.returncode}\n')
+        # 生成对比报告
+        with open('/opt/sqlbot/app/test_results/compare/api_comparison.txt', 'w') as f:
+            f.write('API Comparison Test Report\n')
+            f.write('=' * 50 + '\n\n')
+            f.write('Testing refactored API endpoints against original specifications:\n')
+            f.write('- AlgorithmInput data model validation\n')
+            f.write('- AlgorithmResult output format validation\n')
+            f.write('- SSE streaming output format validation\n')
+            f.write(f'Test exit code: {result.returncode}\n')
 
-sys.exit(result.returncode)
-"""]
+        sys.exit(result.returncode)
     environment:
       PYTHONUNBUFFERED: 1
       PYTHONPATH: /opt/sqlbot/app
       LOG_LEVEL: DEBUG
     volumes:
+      - ./backend/tests:/opt/sqlbot/app/tests
       - ./test_results:/opt/sqlbot/app/test_results
-      - ./test_logs:/opt/sqlbot/app/logs
     working_dir: /opt/sqlbot/app
 
 volumes:
