@@ -232,8 +232,9 @@ async def ask_recommend_questions(session: SessionDep, current_user: CurrentUser
                 # 创建业务数据服务
                 business_service = BusinessDBService(_session)
 
-                # 调用处理流程
+                # 调用处理流程，传入 current_user（与原实现一致）
                 for event_data in business_service.process_recommend_questions(
+                    current_user=current_user,
                     record_id=chat_record_id,
                     articles_number=articles_number,
                     in_chat=True,

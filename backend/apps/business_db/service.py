@@ -901,6 +901,7 @@ class BusinessDBService:
 
     def process_recommend_questions(
         self,
+        current_user,
         record_id: int,
         articles_number: int = 4,
         in_chat: bool = True,
@@ -911,6 +912,7 @@ class BusinessDBService:
         复刻原 LLMService.generate_recommend_questions_task 流程
 
         Args:
+            current_user: 当前用户（与原实现一致）
             record_id: 聊天记录 ID
             articles_number: 生成推荐问题数量
             in_chat: 是否在聊天中
@@ -936,9 +938,9 @@ class BusinessDBService:
         datasource_id = record.datasource
         SQLBotLogUtil.info(f"[BusinessDBService] 从 ChatRecord 获取 datasource_id: {datasource_id}")
 
-        # 预加载业务数据
+        # 预加载业务数据（使用 current_user，与原实现一致）
         context = self.preprocess(
-            current_user=None,  # 推荐问题不需要用户信息
+            current_user=current_user,  # 传入当前用户
             chat_id=0,  # 推荐问题不需要 chat_id
             question='',
             record_id=record_id,
