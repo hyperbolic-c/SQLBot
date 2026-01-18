@@ -923,18 +923,27 @@ class BusinessDBService:
         """
         from apps.algorithm.engine import AlgorithmEngine
         from apps.ai_model.model_factory import get_default_config
+        from apps.chat.models.chat_model import ChatRecord
         import asyncio
 
         SQLBotLogUtil.info(f"[BusinessDBService] process_recommend_questions 开始, record_id={record_id}")
 
         try:
+            # 从 ChatRecord 获取数据源信息
+            record = self.session.get(ChatRecord, record_id)
+            if not record:
+                raise ValueError(f"ChatRecord not found: {record_id}")
+
+            datasource_id = record.datasource
+            SQLBotLogUtil.info(f"[BusinessDBService] 从 ChatRecord 获取 datasource_id: {datasource_id}")
+
             # 预加载业务数据
             context = self.preprocess(
                 current_user=None,  # 推荐问题不需要用户信息
                 chat_id=0,  # 推荐问题不需要 chat_id
                 question='',
                 record_id=record_id,
-                datasource_id=None,
+                datasource_id=datasource_id,
                 ai_model_id=None,
                 regenerate_record_id=None,
                 language='zh',
