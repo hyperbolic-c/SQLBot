@@ -1241,32 +1241,24 @@ class AlgorithmEngine:
 
                     full_guess_text += content
 
+                    # 中间结果：只有 content 和 reasoning_content
                     yield StreamEvent(
                         type="recommended_question",
                         data={"content": content, "reasoning_content": reasoning}
                     )
 
-                # 结束日志
-                self._current_log.finish_time = datetime.now()
-                self._current_log.messages = [
-                    {"type": msg.type, "content": msg.content if hasattr(msg, 'content') else str(msg)}
-                    for msg in guess_msg
-                ]
-                self._current_log.token_usage = token_usage
-                self._current_log.reasoning_content = reasoning
-
-                # 保存推荐问题答案
-                self._result.recommended_question_answer = orjson.dumps({'content': full_guess_text}).decode()
-
                 # 解析推荐问题 JSON
                 recommended_question = self._parse_recommended_questions(full_guess_text)
                 self._result.recommended_question = recommended_question
+                self._result.recommended_question_answer = orjson.dumps({'content': full_guess_text}).decode()
 
-                SQLBotLogUtil.info(f"[AlgorithmEngine] 推荐问题生成完成, 数量={len(recommended_question) if recommended_question else 0}")
+                SQLBotLogUtil.info(f"[AlgorithmEngine] 推荐问题生成完成, recommended_question={recommended_question[:100] if recommended_question else 'None'}...")
 
-                # 记录日志
-                if self._current_log:
-                    self._result.logs.append(self._current_log)
+                # 最终结果：包含 recommended_question 字段（与原实现一致）
+                yield StreamEvent(
+                    type="recommended_question",
+                    data={"recommended_question": recommended_question}
+                )
 
             except Exception as e:
                 SQLBotLogUtil.error(f"[AlgorithmEngine] 生成推荐问题失败: {e}")

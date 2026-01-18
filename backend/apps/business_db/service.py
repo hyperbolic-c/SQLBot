@@ -981,21 +981,31 @@ class BusinessDBService:
         # 运行推荐问题生成
         result = None
         for event in engine.run_recommend_questions(articles_number=articles_number):
-            SQLBotLogUtil.info(f"[BusinessDBService] 收到推荐问题事件: type={event.type}")
+            SQLBotLogUtil.info(f"[BusinessDBService] 收到推荐问题事件: type={event.type}, data_keys={list(event.data.keys())}")
             result = engine.get_result()
 
-            # 生成 SSE 事件，格式与原实现保持一致
+            # 与原实现一致：通过 event.data 是否有 'recommended_question' 字段来区分中间结果和最终结果
             if event.type == 'recommended_question':
-                sse_data = {'content': event.data.get('content'), 'type': event.type}
-                yield sse_data
+                if 'recommended_question' in event.data:
+                    # 最终结果：包含 recommended_question 字段
+                    yield {
+                        'content': event.data.get('recommended_question'),
+                        'type': 'recommended_question'
+                    }
+                else:
+                    # 中间结果：只有 content 和 reasoning_content
+                    yield {
+                        'content': event.data.get('content', ''),
+                        'reasoning_content': event.data.get('reasoning_content', ''),
+                        'type': 'recommended_question_result'
+                    }
             elif event.type == 'error':
-                sse_data = {'content': event.data.get('content'), 'type': event.type}
-                yield sse_data
+                yield {'content': event.data.get('content'), 'type': event.type}
 
         SQLBotLogUtil.info(f"[BusinessDBService] 推荐问题生成完成, result.recommended_question_answer={result.recommended_question_answer if result else 'None'}")
         SQLBotLogUtil.info(f"[BusinessDBService] 推荐问题生成完成, result.recommended_question={result.recommended_question if result else 'None'}")
 
-        # 保存推荐问题答案（与原实现一致：在 finish 事件之前保存）
+        # 保存推荐问题答案（与原实现一致：在循环结束后、yield finish 之前保存）
         if result and result.recommended_question_answer:
             self._update_record_field(
                 record_id,
@@ -1003,15 +1013,11 @@ class BusinessDBService:
                 recommended_question=result.recommended_question
             )
             self.session.commit()
-            SQLBotLogUtil.info(f"[BusinessDBService] 推荐问题已保存到数据库, recommended_question={result.recommended_question}")
+            SQLBotLogUtil.info(f"[BusinessDBService] 推荐问题已保存到数据库")
         else:
             SQLBotLogUtil.warning(f"[BusinessDBService] result.recommended_question_answer 为空, 不保存")
 
-        # 发送 recommended_question 事件（与原实现一致：包含解析后的 JSON 数组）
-        if result and result.recommended_question:
-            yield {'content': result.recommended_question, 'type': 'recommended_question'}
-
-        # 发送 finish 事件
+        # 发送 finish 事件（与原实现一致）
         yield {'type': 'finish'}
 
         SQLBotLogUtil.info(f"[BusinessDBService] process_recommend_questions 完成")
