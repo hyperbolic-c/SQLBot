@@ -16,22 +16,8 @@ ENV UI_HOME=${SQLBOT_HOME}/frontend
 # Set the new algorithm flag for testing
 ENV USE_NEW_ALGORITHM=true
 
-# Install npm in container (nodejs already exists)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    npm && \
-    rm -rf /var/lib/apt/lists/*
-
-# Copy frontend source and build in container
-COPY frontend ${SQLBOT_HOME}/frontend
-
-# Build frontend in container
-WORKDIR ${SQLBOT_HOME}/frontend
-RUN npm config set fund false \
-    && npm config set audit false \
-    && npm config set progress false && \
-    npm install && \
-    npm run build && \
-    rm -rf node_modules
+# Copy pre-built frontend dist (built locally with: cd frontend && npm run build)
+# COPY frontend/dist/ ${UI_HOME}/dist/
 
 WORKDIR ${SQLBOT_HOME}/app
 
