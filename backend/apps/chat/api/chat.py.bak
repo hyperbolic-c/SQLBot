@@ -1,6 +1,7 @@
 import asyncio
 import io
 import traceback
+from typing import Optional, List
 
 import orjson
 import pandas as pd
@@ -9,47 +10,24 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import and_, select
 from starlette.responses import JSONResponse
 
-from apps.chat.curd.chat import (
-    create_chat,
-    delete_chat_with_user,
-    format_json_data,
-    format_json_list_data,
-    get_chart_config,
-    get_chart_data_with_user,
-    get_chat_chart_data,
-    get_chat_predict_data,
-    get_chat_predict_data_with_user,
-    get_chat_record_by_id,
-    get_chat_with_records,
-    get_chat_with_records_with_data,
-    list_chats,
-    list_recent_questions,
-    rename_chat_with_user,
-)
-from apps.chat.models.chat_model import (
-    AxisObj,
-    Chat,
-    ChatFinishStep,
-    ChatInfo,
-    ChatQuestion,
-    ChatRecord,
-    CreateChat,
-    QuickCommand,
-    RenameChat,
-)
+from apps.chat.curd.chat import delete_chat_with_user, get_chart_data_with_user, get_chat_predict_data_with_user, list_chats, get_chat_with_records, create_chat, rename_chat, \
+    delete_chat, get_chat_chart_data, get_chat_predict_data, get_chat_with_records_with_data, get_chat_record_by_id, \
+    format_json_data, format_json_list_data, get_chart_config, list_recent_questions,get_chat as get_chat_exec, rename_chat_with_user
+from apps.chat.models.chat_model import CreateChat, ChatRecord, RenameChat, ChatQuestion, AxisObj, QuickCommand, \
+    ChatInfo, Chat, ChatFinishStep
 from apps.chat.task.llm import LLMService
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
 from apps.system.schemas.permission import SqlbotPermission, require_permissions
-from common.audit.models.log_model import OperationModules, OperationType
-from common.audit.schemas.logger_decorator import LogConfig, system_log
-from common.core.deps import CurrentAssistant, CurrentUser, SessionDep, Trans
+from common.core.deps import CurrentAssistant, SessionDep, CurrentUser, Trans
 from common.utils.command_utils import parse_quick_command
 from common.utils.data_format import DataFormat
+from common.audit.models.log_model import OperationType, OperationModules
+from common.audit.schemas.logger_decorator import LogConfig, system_log
 
 router = APIRouter(tags=["Data Q&A"], prefix="/chat")
 
 
-@router.get("/list", response_model=list[Chat], summary=f"{PLACEHOLDER_PREFIX}get_chat_list")
+@router.get("/list", response_model=List[Chat], summary=f"{PLACEHOLDER_PREFIX}get_chat_list")
 async def chats(session: SessionDep, current_user: CurrentUser):
     return list_chats(session, current_user)
 
@@ -206,66 +184,22 @@ async def start_chat(session: SessionDep, current_user: CurrentUser):
 
 @router.post("/recommend_questions/{chat_record_id}", summary=f"{PLACEHOLDER_PREFIX}ask_recommend_questions")
 async def ask_recommend_questions(session: SessionDep, current_user: CurrentUser, chat_record_id: int,
-                                  current_assistant: CurrentAssistant, articles_number: int | None = 4):
+                                  current_assistant: CurrentAssistant, articles_number: Optional[int] = 4):
     def _return_empty():
         yield 'data:' + orjson.dumps({'content': '[]', 'type': 'recommended_question'}).decode() + '\n\n'
 
     try:
-        # 仅处理 page 来源
-        if current_assistant and current_assistant.type != 4:
-            # 回退到原实现
-            record = get_chat_record_by_id(session, chat_record_id)
-            if not record:
-                return StreamingResponse(_return_empty(), media_type="text/event-stream")
-
-            request_question = ChatQuestion(chat_id=record.chat_id, question=record.question if record.question else '')
-            llm_service = await LLMService.create(session, current_user, request_question, current_assistant, True)
-            llm_service.set_record(record)
-            llm_service.set_articles_number(articles_number)
-            llm_service.run_recommend_questions_task_async()
-            return StreamingResponse(llm_service.await_result(), media_type="text/event-stream")
-
-        # 新架构实现
-        from apps.algorithm.service import AlgorithmService
-        from apps.business_db import BusinessDataLayer
-
         record = get_chat_record_by_id(session, chat_record_id)
+
         if not record:
             return StreamingResponse(_return_empty(), media_type="text/event-stream")
 
-        business_db = BusinessDataLayer(session, current_user)
+        request_question = ChatQuestion(chat_id=record.chat_id, question=record.question if record.question else '')
 
-        # 准备算法输入
-        algorithm_input, _ = await business_db.prepare_algorithm_input(
-            chat_id=record.chat_id,
-            question=record.question or '',
-            embedding=True
-        )
-        algorithm_input.articles_number = articles_number
-
-        # 获取 LLM 配置
-        from apps.ai_model.model_factory import get_default_config
-        from apps.datasource.models.datasource import CoreDatasource
-
-        config = await get_default_config()
-        ds = session.get(CoreDatasource, record.datasource)
-
-        # 创建算法服务
-        algorithm_service = AlgorithmService(algorithm_input)
-        algorithm_service.initialize(config, ds)
-        algorithm_service.set_record(record)
-        algorithm_service.set_articles_number(articles_number)
-
-        # 运行推荐问题任务
-        def run_recommend():
-            try:
-                for chunk in algorithm_service.run_recommend_questions_task():
-                    yield chunk
-            except Exception:
-                traceback.print_exc()
-
-        return StreamingResponse(run_recommend(), media_type="text/event-stream")
-
+        llm_service = await LLMService.create(session, current_user, request_question, current_assistant, True)
+        llm_service.set_record(record)
+        llm_service.set_articles_number(articles_number)
+        llm_service.run_recommend_questions_task_async()
     except Exception as e:
         traceback.print_exc()
 
@@ -274,8 +208,10 @@ async def ask_recommend_questions(session: SessionDep, current_user: CurrentUser
 
         return StreamingResponse(_err(e), media_type="text/event-stream")
 
+    return StreamingResponse(llm_service.await_result(), media_type="text/event-stream")
 
-@router.get("/recent_questions/{datasource_id}", response_model=list[str],
+
+@router.get("/recent_questions/{datasource_id}", response_model=List[str],
             summary=f"{PLACEHOLDER_PREFIX}get_recommend_questions")
 #@require_permissions(permission=SqlbotPermission(type='ds', keyExpression="datasource_id"))
 async def recommend_questions(session: SessionDep, current_user: CurrentUser,
@@ -288,7 +224,7 @@ def find_base_question(record_id: int, session: SessionDep):
         and_(ChatRecord.id == record_id))
     _record = session.execute(stmt).fetchone()
     if not _record:
-        raise Exception('Cannot find base chat record')
+        raise Exception(f'Cannot find base chat record')
     rec_question, rec_regenerate_record_id = _record
     if rec_regenerate_record_id:
         return find_base_question(rec_regenerate_record_id, session)
@@ -304,7 +240,7 @@ async def question_answer(session: SessionDep, current_user: CurrentUser, reques
 
 
 async def question_answer_inner(session: SessionDep, current_user: CurrentUser, request_question: ChatQuestion,
-                                current_assistant: CurrentAssistant | None = None, in_chat: bool = True,
+                                current_assistant: Optional[CurrentAssistant] = None, in_chat: bool = True,
                                 stream: bool = True,
                                 finish_step: ChatFinishStep = ChatFinishStep.GENERATE_CHART, embedding: bool = False):
     try:
@@ -346,7 +282,7 @@ async def question_answer_inner(session: SessionDep, current_user: CurrentUser, 
                 _record = session.execute(stmt).fetchone()
 
                 if not _record:
-                    raise Exception('You have not ask any question')
+                    raise Exception(f'You have not ask any question')
 
                 rec_id, rec_chat_id, rec_regenerate_record_id = _record
 
@@ -384,7 +320,7 @@ async def question_answer_inner(session: SessionDep, current_user: CurrentUser, 
                 if in_chat:
                     yield 'data:' + orjson.dumps({'content': str(_e), 'type': 'error'}).decode() + '\n\n'
                 else:
-                    yield '&#x274c; **ERROR:**\n'
+                    yield f'&#x274c; **ERROR:**\n'
                     yield f'> {str(_e)}\n'
 
             return StreamingResponse(_err(e), media_type="text/event-stream")
@@ -396,92 +332,26 @@ async def question_answer_inner(session: SessionDep, current_user: CurrentUser, 
 
 
 async def stream_sql(session: SessionDep, current_user: CurrentUser, request_question: ChatQuestion,
-                     current_assistant: CurrentAssistant | None = None, in_chat: bool = True, stream: bool = True,
+                     current_assistant: Optional[CurrentAssistant] = None, in_chat: bool = True, stream: bool = True,
                      finish_step: ChatFinishStep = ChatFinishStep.GENERATE_CHART, embedding: bool = False):
     try:
-        # 仅处理 page 来源
-        if current_assistant and current_assistant.type != 4:
-            # 回退到原实现
-            llm_service = await LLMService.create(session, current_user, request_question, current_assistant,
-                                                  embedding=embedding)
-            llm_service.init_record(session=session)
-            llm_service.run_task_async(in_chat=in_chat, stream=stream, finish_step=finish_step)
-        else:
-            # 使用新架构
-            from apps.algorithm.service import AlgorithmService
-            from apps.business_db import BusinessDataLayer
-
-            business_db = BusinessDataLayer(session, current_user)
-
-            # 准备算法输入
-            algorithm_input, record = await business_db.prepare_algorithm_input(
-                chat_id=request_question.chat_id,
-                question=request_question.question,
-                regenerate_record_id=request_question.regenerate_record_id,
-                embedding=embedding
-            )
-
-            # 获取表结构
-            db_schema = business_db.get_table_schema(
-                algorithm_input.datasource_id,
-                algorithm_input.question,
-                embedding
-            )
-            algorithm_input.db_schema = db_schema
-
-            # 获取术语和数据训练模板
-            algorithm_input.terminologies = business_db.get_terminology_template(
-                algorithm_input.question,
-                algorithm_input.datasource_id
-            )
-            algorithm_input.data_training = business_db.get_data_training_template(
-                algorithm_input.question,
-                algorithm_input.datasource_id
-            )
-
-            # 获取 LLM 配置和数据源
-            from apps.ai_model.model_factory import get_default_config
-            from apps.datasource.models.datasource import CoreDatasource
-
-            config = await get_default_config()
-            ds = session.get(CoreDatasource, algorithm_input.datasource_id)
-
-            # 创建算法服务
-            algorithm_service = AlgorithmService(algorithm_input)
-            algorithm_service.initialize(config, ds)
-
-            # 收集结果
-            def collect_result():
-                for chunk in algorithm_service.run_task(in_chat=in_chat, stream=stream):
-                    yield chunk
-
-                # 保存结果
-                result = algorithm_service.get_result()
-                result.record_id = record.id
-                business_db.save_algorithm_result(record.id, result)
-
-            if stream:
-                return StreamingResponse(collect_result(), media_type="text/event-stream")
-            else:
-                res = collect_result()
-                raw_data = {}
-                for chunk in res:
-                    if chunk:
-                        raw_data = chunk
-                status_code = 200 if raw_data.get('success', True) else 500
-                return JSONResponse(content=raw_data, status_code=status_code)
-
+        llm_service = await LLMService.create(session, current_user, request_question, current_assistant,
+                                              embedding=embedding)
+        llm_service.init_record(session=session)
+        llm_service.run_task_async(in_chat=in_chat, stream=stream, finish_step=finish_step)
     except Exception as e:
         traceback.print_exc()
 
         if stream:
             def _err(_e: Exception):
                 yield 'data:' + orjson.dumps({'content': str(_e), 'type': 'error'}).decode() + '\n\n'
+
             return StreamingResponse(_err(e), media_type="text/event-stream")
         else:
-            return JSONResponse(content={'message': str(e)}, status_code=500)
-
-    # 如果回退到原实现
+            return JSONResponse(
+                content={'message': str(e)},
+                status_code=500,
+            )
     if stream:
         return StreamingResponse(llm_service.await_result(), media_type="text/event-stream")
     else:
@@ -490,8 +360,14 @@ async def stream_sql(session: SessionDep, current_user: CurrentUser, request_que
         for chunk in res:
             if chunk:
                 raw_data = chunk
-        status_code = 200 if raw_data.get('success', True) else 500
-        return JSONResponse(content=raw_data, status_code=status_code)
+        status_code = 200
+        if not raw_data.get('success'):
+            status_code = 500
+
+        return JSONResponse(
+            content=raw_data,
+            status_code=status_code,
+        )
 
 
 @router.post("/record/{chat_record_id}/{action_type}", summary=f"{PLACEHOLDER_PREFIX}analysis_or_predict")
@@ -538,7 +414,7 @@ async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, ch
                 if in_chat:
                     yield 'data:' + orjson.dumps({'content': str(_e), 'type': 'error'}).decode() + '\n\n'
                 else:
-                    yield '&#x274c; **ERROR:**\n'
+                    yield f'&#x274c; **ERROR:**\n'
                     yield f'> {str(_e)}\n'
 
             return StreamingResponse(_err(e), media_type="text/event-stream")
