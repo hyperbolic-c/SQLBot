@@ -2,6 +2,7 @@
 import traceback
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 from typing import Any
 
 import orjson
@@ -57,23 +58,31 @@ class AlgorithmService:
         """
         运行主要任务流程
 
+        遵循原实现 LLMService.run_task 的输出格式
+        SSE 格式: yield 'data:' + orjson.dumps({...}).decode() + '\n\n'
+
         Args:
             in_chat: 是否在聊天界面
             stream: 是否流式输出
 
         Yields:
-            流式事件
+            SSE 格式的流式事件字符串
         """
+        json_result: dict[str, Any] = {'success': True}
         try:
             # 初始化消息
             self._init_messages()
 
-            # 返回 ID 和问题
+            # return id - SSE 格式
             if in_chat:
-                yield {'type': 'id', 'id': self.input.chat_record_id}
+                yield 'data:' + orjson.dumps({'type': 'id', 'id': self.input.chat_record_id}).decode() + '\n\n'
                 if self.input.regenerate_record_id:
-                    yield {'type': 'regenerate_record_id', 'regenerate_record_id': self.input.regenerate_record_id}
-                yield {'type': 'question', 'question': self.input.question}
+                    yield 'data:' + orjson.dumps(
+                        {'type': 'regenerate_record_id', 'regenerate_record_id': self.input.regenerate_record_id}
+                    ).decode() + '\n\n'
+                yield 'data:' + orjson.dumps(
+                    {'type': 'question', 'question': self.input.question}
+                ).decode() + '\n\n'
 
             # 生成 SQL
             sql_result = self._generate_sql()
@@ -81,10 +90,14 @@ class AlgorithmService:
             for chunk in sql_result:
                 full_sql_text += chunk.get('content', '')
                 if in_chat:
-                    yield {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'), 'type': 'sql-result'}
+                    yield 'data:' + orjson.dumps(
+                        {'content': chunk.get('content'),
+                         'reasoning_content': chunk.get('reasoning_content'),
+                         'type': 'sql-result'}
+                    ).decode() + '\n\n'
 
             if in_chat:
-                yield {'type': 'info', 'msg': 'sql generated'}
+                yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'sql generated'}).decode() + '\n\n'
 
             # 解析 SQL
             sql, tables = self._check_sql(full_sql_text)
@@ -95,7 +108,7 @@ class AlgorithmService:
             # 格式化 SQL 输出
             format_sql = sqlparse.format(sql, reindent=True)
             if in_chat:
-                yield {'content': format_sql, 'type': 'sql'}
+                yield 'data:' + orjson.dumps({'content': format_sql, 'type': 'sql'}).decode() + '\n\n'
             else:
                 if stream:
                     yield f'```sql\n{format_sql}\n```\n\n'
@@ -108,7 +121,7 @@ class AlgorithmService:
             result["data"] = _data
 
             if in_chat:
-                yield {'content': 'execute-success', 'type': 'sql-data'}
+                yield 'data:' + orjson.dumps({'content': 'execute-success', 'type': 'sql-data'}).decode() + '\n\n'
 
             # 生成图表
             chart_result = self._generate_chart()
@@ -116,10 +129,14 @@ class AlgorithmService:
             for chunk in chart_result:
                 full_chart_text += chunk.get('content', '')
                 if in_chat:
-                    yield {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'), 'type': 'chart-result'}
+                    yield 'data:' + orjson.dumps(
+                        {'content': chunk.get('content'),
+                         'reasoning_content': chunk.get('reasoning_content'),
+                         'type': 'chart-result'}
+                    ).decode() + '\n\n'
 
             if in_chat:
-                yield {'type': 'info', 'msg': 'chart generated'}
+                yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'chart generated'}).decode() + '\n\n'
 
             # 解析图表配置
             chart = self._check_chart(full_chart_text)
@@ -127,11 +144,11 @@ class AlgorithmService:
             self.result.chart_answer = orjson.dumps({'content': full_chart_text}).decode()
 
             if in_chat:
-                yield {'content': orjson.dumps(chart).decode(), 'type': 'chart'}
+                yield 'data:' + orjson.dumps({'content': orjson.dumps(chart).decode(), 'type': 'chart'}).decode() + '\n\n'
 
             # 完成
             if in_chat:
-                yield {'type': 'finish'}
+                yield 'data:' + orjson.dumps({'type': 'finish'}).decode() + '\n\n'
 
         except Exception as e:
             traceback.print_exc()
@@ -139,8 +156,8 @@ class AlgorithmService:
             error_msg = orjson.dumps({'message': str(e), 'traceback': traceback.format_exc()}).decode()
             self.result.error_message = error_msg
             if in_chat:
-                yield {'content': error_msg, 'type': 'error'}
-                yield {'success': False, 'message': str(e)}
+                yield 'data:' + orjson.dumps({'content': error_msg, 'type': 'error'}).decode() + '\n\n'
+                yield 'data:' + orjson.dumps({'success': False, 'message': str(e)}).decode() + '\n\n'
 
     def _init_messages(self):
         """初始化消息"""
@@ -180,7 +197,10 @@ class AlgorithmService:
     def _generate_sql(self) -> Iterator[dict[str, Any]]:
         """生成 SQL"""
         self.sql_message.append(HumanMessage(
-            content=self.input.sql_user_question()
+            content=self.input.sql_user_question(
+                current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                change_title=self.input.change_title
+            )
         ))
 
         token_usage = {}
@@ -339,16 +359,11 @@ class AlgorithmService:
         for chunk in self.run_recommend_questions_task():
             self.chunk_list.append(chunk)
 
-    def run_recommend_questions_task(self) -> Iterator[dict[str, Any]]:
+    def run_recommend_questions_task(self):
         """
         生成推荐问题
 
-        遵循原实现的流程：
-        1. 获取表结构
-        2. 获取用户历史问题
-        3. 构建消息
-        4. 调用 LLM 生成推荐问题
-        5. 保存结果
+        遵循原实现的输出格式 SSE 格式
         """
         from apps.datasource.crud.datasource import get_table_schema
 
@@ -389,7 +404,10 @@ class AlgorithmService:
                 full_guess_text += content
                 full_thinking += reasoning
 
-                yield {'content': content, 'reasoning_content': reasoning}
+                # SSE 格式输出
+                yield 'data:' + orjson.dumps(
+                    {'content': content, 'reasoning_content': reasoning}
+                ).decode() + '\n\n'
 
             guess_msg.append(AIMessage(full_guess_text))
 
@@ -406,7 +424,10 @@ class AlgorithmService:
             # 保存推荐问题结果
             self.result.recommended_questions = full_guess_text
 
-            yield {'recommended_question': full_guess_text}
+            # 最终推荐问题结果 SSE 格式
+            yield 'data:' + orjson.dumps(
+                {'content': full_guess_text, 'type': 'recommended_question'}
+            ).decode() + '\n\n'
 
             _debug_log("RECOMMEND_QUESTIONS", "Generated recommend questions", {
                 "length": len(full_guess_text)
@@ -414,5 +435,7 @@ class AlgorithmService:
 
         except Exception:
             traceback.print_exc()
-            yield {'content': str(traceback.format_exc()), 'type': 'error'}
+            yield 'data:' + orjson.dumps(
+                {'content': str(traceback.format_exc()), 'type': 'error'}
+            ).decode() + '\n\n'
 

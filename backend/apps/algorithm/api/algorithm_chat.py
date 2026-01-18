@@ -81,11 +81,12 @@ async def process_algorithm_task(
 
         # 等待任务完成并返回结果
         # 遵循原实现，使用 await_result 模式
+        # run_task 返回 SSE 格式字符串，直接 yield
         def collect_result():
             # 首先等待任务完成
             while algorithm_service.future.done() is False:
                 pass
-            # 然后返回所有结果
+            # 然后返回所有结果（SSE 格式已经是字符串）
             while True:
                 chunk = algorithm_service.pop_chunk()
                 if chunk is None:
@@ -99,7 +100,16 @@ async def process_algorithm_task(
             raw_data = {}
             for chunk in res:
                 if chunk:
-                    raw_data = chunk
+                    # SSE 格式字符串，需要解析
+                    import orjson
+                    try:
+                        # 去除 "data: " 前缀和末尾的 "\n\n"
+                        json_str = chunk.replace('data: ', '').strip()
+                        if json_str.endswith('\n\n'):
+                            json_str = json_str[:-2]
+                        raw_data = orjson.loads(json_str)
+                    except Exception:
+                        pass
             status_code = 200 if raw_data.get('success', True) else 500
             return JSONResponse(content=raw_data, status_code=status_code)
 

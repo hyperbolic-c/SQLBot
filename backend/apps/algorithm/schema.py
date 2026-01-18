@@ -90,7 +90,7 @@ class AlgorithmInput(BaseModel):
             example_answer_3=_example_answer_3
         )
 
-    def sql_user_question(self, current_time: str | None = None, change_title: bool = False) -> str:
+    def sql_user_question(self, current_time: str, change_title: bool) -> str:
         """
         生成 SQL 用户提示词
 
@@ -104,7 +104,7 @@ class AlgorithmInput(BaseModel):
             schema=self.db_schema,
             question=_question,
             rule=self.rule,
-            current_time=current_time or "",
+            current_time=current_time,
             error_msg=self.error_msg,
             change_title=change_title
         )
