@@ -219,7 +219,8 @@ async def ask_recommend_questions(session: SessionDep, current_user: CurrentUser
         nonlocal chunk_list
         try:
             # 创建新的数据库会话（后台线程需要独立的会话）
-            from common.core.db import session_maker
+            # 使用 llm.py 中定义的 session_maker
+            from apps.chat.task.llm import session_maker
             _session = session_maker()
 
             try:
@@ -432,7 +433,8 @@ async def stream_sql_new(session: SessionDep, current_user: CurrentUser, request
         nonlocal chunk_list
         try:
             # 创建新的数据库会话（后台线程需要独立的会话）
-            from common.core.db import session_maker
+            # 使用 llm.py 中定义的 session_maker
+            from apps.chat.task.llm import session_maker
             _session = session_maker()
 
             try:
