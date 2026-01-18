@@ -192,47 +192,90 @@ async def ask_recommend_questions(session: SessionDep, current_user: CurrentUser
     """
     生成推荐问题（使用新的业务数据层架构）
 
-    流程：
-    1. 获取聊天记录
-    2. 通过 BusinessDBService 预加载所有业务数据
-    3. 通过 AlgorithmEngine 生成推荐问题
-    4. 返回 SSE 流
-    5. 最后统一保存推荐问题到数据库
+    使用与原实现相同的线程池架构：
+    1. 在后台线程中执行任务（通过 executor.submit）
+    2. 将结果添加到 chunk_list
+    3. await_result() 从 chunk_list 中逐个弹出数据并 yield
     """
     from apps.business_db.service import BusinessDBService
+    from apps.chat.task.llm import executor
+    import concurrent.futures
     import orjson
 
-    def _return_empty():
-        yield 'data: ' + orjson.dumps({'content': '[]', 'type': 'recommended_question'}).decode() + '\n\n'
+    # 使用列表存储 SSE 数据块
+    chunk_list: list = []
+    future = None
 
-    def _err(e: Exception):
-        yield 'data: ' + orjson.dumps({'content': str(e), 'type': 'error'}).decode() + '\n\n'
-
-    def generate_response():
+    def is_running(timeout=0.5):
+        """检查后台任务是否仍在运行"""
         try:
-            record = session.get(ChatRecord, chat_record_id)
-            if not record:
-                return
+            r = concurrent.futures.wait([future], timeout)
+            return len(r.not_done) > 0
+        except Exception:
+            return True
 
-            # 创建业务数据服务
-            business_service = BusinessDBService(session)
+    def run_task_cache():
+        """在后台线程中执行任务，将结果添加到 chunk_list"""
+        nonlocal chunk_list
+        try:
+            # 创建新的数据库会话（后台线程需要独立的会话）
+            from common.core.db import session_maker
+            _session = session_maker()
 
-            # 调用处理流程
-            for event_data in business_service.process_recommend_questions(
-                record_id=chat_record_id,
-                articles_number=articles_number,
-                in_chat=True,
-            ):
-                # 转换为 SSE 格式
-                json_str = orjson.dumps(event_data).decode()
-                sse_data = f"data: {json_str}\n\n"
-                yield sse_data
+            try:
+                record = _session.get(ChatRecord, chat_record_id)
+                if not record:
+                    SQLBotLogUtil.warning(f"[recommend_questions] 记录不存在: {chat_record_id}")
+                    return
+
+                # 创建业务数据服务
+                business_service = BusinessDBService(_session)
+
+                # 调用处理流程
+                for event_data in business_service.process_recommend_questions(
+                    record_id=chat_record_id,
+                    articles_number=articles_number,
+                    in_chat=True,
+                ):
+                    # 转换为 SSE 格式
+                    json_str = orjson.dumps(event_data).decode()
+                    sse_data = f"data: {json_str}\n\n"
+                    chunk_list.append(sse_data)
+                    SQLBotLogUtil.info(f"[recommend_questions] 添加到 chunk_list: type={event_data.get('type', '')}")
+
+                SQLBotLogUtil.info(f"[recommend_questions] 后台线程完成, 共 {len(chunk_list)} 个事件")
+            finally:
+                session_maker.remove()
 
         except Exception as e:
             traceback.print_exc()
-            yield from _err(e)
+            error_data = f"data: {orjson.dumps({'content': str(e), 'type': 'error'}).decode()}\n\n"
+            chunk_list.append(error_data)
 
-    return StreamingResponse(generate_response(), media_type="text/event-stream")
+    def await_result():
+        """从 chunk_list 中逐个弹出数据并 yield"""
+        # 等待后台任务运行，同时输出已生成的数据
+        while is_running():
+            while True:
+                try:
+                    chunk = chunk_list.pop(0)
+                    yield chunk
+                except IndexError:
+                    break
+
+        # 任务完成后，输出剩余数据
+        while True:
+            try:
+                chunk = chunk_list.pop(0)
+                yield chunk
+            except IndexError:
+                break
+
+    # 在后台线程中启动任务
+    future = executor.submit(run_task_cache)
+    SQLBotLogUtil.info(f"[recommend_questions] 后台任务已提交, record_id={chat_record_id}")
+
+    return StreamingResponse(await_result(), media_type="text/event-stream")
 
 
 @router.get("/recent_questions/{datasource_id}", response_model=List[str],
@@ -362,71 +405,108 @@ async def stream_sql_new(session: SessionDep, current_user: CurrentUser, request
     """
     New architecture implementation using business_db + algorithm layers.
 
-    Data flow:
-    1. API Layer receives HTTP request
-    2. BusinessDBService.process() [Main Entry Point]
-       - preprocess() - Load all business data
-       - AlgorithmEngine.run() - Algorithm processing
-       - postprocess() - Batch save results
-    3. StreamingResponse to Frontend
+    使用与原实现相同的线程池架构：
+    1. 在后台线程中执行任务（通过 executor.submit）
+    2. 将结果添加到 chunk_list
+    3. await_result() 从 chunk_list 中逐个弹出数据并 yield
     """
     from apps.ai_model.model_factory import get_default_config
     from apps.business_db.service import BusinessDBService
+    from apps.chat.task.llm import executor
+    import concurrent.futures
 
-    def generate_response():
+    # 使用列表存储 SSE 数据块（与原实现的 chunk_list 相同）
+    chunk_list: list = []
+    future = None
+
+    def is_running(timeout=0.5):
+        """检查后台任务是否仍在运行"""
         try:
-            # 调用业务数据层主入口
-            business_service = BusinessDBService(session)
+            r = concurrent.futures.wait([future], timeout)
+            return len(r.not_done) > 0
+        except Exception:
+            return True
 
-            # 获取默认 AI 模型配置（复刻原 LLMService.create 的行为）
-            import asyncio
+    def run_task_cache():
+        """在后台线程中执行任务，将结果添加到 chunk_list"""
+        nonlocal chunk_list
+        try:
+            # 创建新的数据库会话（后台线程需要独立的会话）
+            from common.core.db import session_maker
+            _session = session_maker()
+
             try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
+                business_service = BusinessDBService(_session)
 
-            config = loop.run_until_complete(get_default_config())
-            ai_model_id = config.model_id
-            print(f"[DEBUG] stream_sql_new: ai_model_id={ai_model_id}, model_name={config.model_name}")
+                # 获取默认 AI 模型配置
+                import asyncio
+                try:
+                    loop = asyncio.get_event_loop()
+                except RuntimeError:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
 
-            # 调用 process，传入获取到的 ai_model_id
-            SQLBotLogUtil.info(f"[stream_sql_new] 开始生成响应, stream={stream}")
-            event_count = 0
-            for event_data in business_service.process(
-                current_user=current_user,
-                chat_id=request_question.chat_id,
-                question=request_question.question,
-                datasource_id=None,
-                ai_model_id=ai_model_id,
-                regenerate_record_id=request_question.regenerate_record_id,
-                language=request_question.lang,
-                error_msg=request_question.error_msg,
-                finish_step=finish_step,
-                in_chat=in_chat,
-                stream=stream,
-            ):
-                event_count += 1
-                # event_data 是字典，直接序列化
-                # orjson.dumps 返回 bytes，需要 decode 成 str，否则会变成 b'...' 格式
-                json_str = orjson.dumps(event_data).decode()
-                sse_data = f"data: {json_str}\n\n"
-                event_type = event_data.get('type', '')
+                config = loop.run_until_complete(get_default_config())
+                ai_model_id = config.model_id
+                SQLBotLogUtil.info(f"[stream_sql_new] 后台线程启动, ai_model_id={ai_model_id}")
 
-                # 使用 SQLBotLogUtil 确保日志可见
-                SQLBotLogUtil.info(f"[stream_sql_new] 事件 #{event_count}: type={event_type}")
-                SQLBotLogUtil.info(f"[stream_sql_new] SSE 数据: {sse_data[:200]}")
+                # 调用 process，生成 SSE 数据
+                for event_data in business_service.process(
+                    current_user=current_user,
+                    chat_id=request_question.chat_id,
+                    question=request_question.question,
+                    datasource_id=None,
+                    ai_model_id=ai_model_id,
+                    regenerate_record_id=request_question.regenerate_record_id,
+                    language=request_question.lang,
+                    error_msg=request_question.error_msg,
+                    finish_step=finish_step,
+                    in_chat=in_chat,
+                    stream=stream,
+                ):
+                    # 格式化为 SSE 数据
+                    json_str = orjson.dumps(event_data).decode()
+                    sse_data = f"data: {json_str}\n\n"
+                    chunk_list.append(sse_data)
+                    SQLBotLogUtil.info(f"[stream_sql_new] 添加到 chunk_list: type={event_data.get('type', '')}")
 
-                yield sse_data
-                SQLBotLogUtil.info(f"[stream_sql_new] 事件 #{event_count} 已 yield")
-
-            SQLBotLogUtil.info(f"[stream_sql_new] 响应生成完成, 共 {event_count} 个事件")
+                SQLBotLogUtil.info(f"[stream_sql_new] 后台线程完成, 共 {len(chunk_list)} 个事件")
+            finally:
+                session_maker.remove()
 
         except Exception as e:
             traceback.print_exc()
-            yield f"data: {orjson.dumps({'content': str(e), 'type': 'error'})}\n\n"
+            error_data = f"data: {orjson.dumps({'content': str(e), 'type': 'error'}).decode()}\n\n"
+            chunk_list.append(error_data)
 
-    return StreamingResponse(generate_response(), media_type="text/event-stream")
+    def await_result():
+        """从 chunk_list 中逐个弹出数据并 yield（与原实现相同）"""
+        # 等待后台任务运行，同时输出已生成的数据
+        while is_running():
+            while True:
+                try:
+                    chunk = chunk_list.pop(0)
+                    SQLBotLogUtil.info(f"[stream_sql_new] yield chunk: {chunk[:100] if chunk else 'None'}")
+                    yield chunk
+                except IndexError:
+                    break
+
+        # 任务完成后，输出剩余数据
+        while True:
+            try:
+                chunk = chunk_list.pop(0)
+                SQLBotLogUtil.info(f"[stream_sql_new] yield 剩余 chunk: {chunk[:100] if chunk else 'None'}")
+                yield chunk
+            except IndexError:
+                break
+
+        SQLBotLogUtil.info(f"[stream_sql_new] await_result 完成")
+
+    # 在后台线程中启动任务（与原实现的 run_task_async 相同）
+    future = executor.submit(run_task_cache)
+    SQLBotLogUtil.info(f"[stream_sql_new] 后台任务已提交")
+
+    return StreamingResponse(await_result(), media_type="text/event-stream")
 
 
 async def stream_sql(session: SessionDep, current_user: CurrentUser, request_question: ChatQuestion,
