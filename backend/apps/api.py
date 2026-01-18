@@ -1,13 +1,23 @@
 from fastapi import APIRouter
 
+from apps.algorithm.api import algorithm_chat
 from apps.chat.api import chat
 from apps.dashboard.api import dashboard_api
 from apps.data_training.api import data_training
-from apps.datasource.api import datasource, table_relation, recommended_problem
+from apps.datasource.api import datasource, recommended_problem, table_relation
 from apps.mcp import mcp
-from apps.system.api import login, user, aimodel, workspace, assistant, parameter, apikey
-from apps.terminology.api import terminology
 from apps.settings.api import base
+from apps.system.api import (
+    aimodel,
+    apikey,
+    assistant,
+    login,
+    parameter,
+    user,
+    workspace,
+)
+from apps.terminology.api import terminology
+
 #from audit.api import audit_api
 
 
@@ -29,5 +39,6 @@ api_router.include_router(parameter.router)
 api_router.include_router(apikey.router)
 
 api_router.include_router(recommended_problem.router)
+api_router.include_router(algorithm_chat.router)
 
 #api_router.include_router(audit_api.router)

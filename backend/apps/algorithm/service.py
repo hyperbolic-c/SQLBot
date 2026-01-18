@@ -44,6 +44,10 @@ class AlgorithmService:
         self.chart_message: list[BaseMessage | dict] = []
         self.llm = None
         self.ds = None
+        self.chunk_list: list = []  # 用于缓存流式输出
+        self.future = None  # 用于异步执行
+        self.record = None  # 记录
+        self.articles_number = input_data.articles_number or 4  # 推荐问题数量
 
     def initialize(self, llm_config, datasource):
         """初始化 LLM 和数据源"""
@@ -299,3 +303,100 @@ class AlgorithmService:
     def get_result(self) -> AlgorithmResult:
         """获取结果"""
         return self.result
+
+    def set_record(self, record):
+        """设置记录"""
+        self.result.record_id = record.id
+        self.record = record
+
+    def set_articles_number(self, articles_number: int):
+        """设置推荐问题数量"""
+        self.articles_number = articles_number
+        self.input.articles_number = articles_number
+
+    def run_recommend_questions_task_async(self):
+        """异步运行推荐问题任务"""
+        self.future = executor.submit(self.run_recommend_questions_task_cache)
+
+    def run_recommend_questions_task_cache(self):
+        """缓存推荐问题任务结果"""
+        for chunk in self.run_recommend_questions_task():
+            self.chunk_list.append(chunk)
+
+    def run_recommend_questions_task(self) -> Iterator[dict[str, Any]]:
+        """
+        生成推荐问题
+
+        遵循原实现的流程：
+        1. 获取表结构
+        2. 获取用户历史问题
+        3. 构建消息
+        4. 调用 LLM 生成推荐问题
+        5. 保存结果
+        """
+        from apps.datasource.crud.datasource import get_table_schema
+
+        try:
+            # 获取表结构
+            if self.input.db_schema == "":
+                self.input.db_schema = get_table_schema(
+                    session=None,  # 不需要 session，因为已经获取了表结构
+                    current_user=None,
+                    ds=self.ds,
+                    question=self.input.question,
+                    embedding=False
+                )
+
+            # 获取历史问题
+            old_questions = self.input.old_questions or []
+
+            # 构建消息
+            guess_msg: list[BaseMessage] = []
+            guess_msg.append(SystemMessage(content=self.input.guess_sys_question(self.input.articles_number)))
+            guess_msg.append(HumanMessage(content=self.input.guess_user_question(orjson.dumps(old_questions).decode())))
+
+            _debug_log("RECOMMEND_QUESTIONS", "Generating recommend questions", {
+                "articles_number": self.input.articles_number,
+                "old_questions_count": len(old_questions)
+            })
+
+            # 调用 LLM 生成
+            token_usage = {}
+            res = self.llm.stream(guess_msg)
+
+            full_thinking = ''
+            full_guess_text = ''
+            for chunk in res:
+                content = chunk.content if hasattr(chunk, 'content') else ''
+                reasoning = chunk.additional_kwargs.get('reasoning_content', '') if hasattr(chunk, 'additional_kwargs') else ''
+
+                full_guess_text += content
+                full_thinking += reasoning
+
+                yield {'content': content, 'reasoning_content': reasoning}
+
+            guess_msg.append(AIMessage(full_guess_text))
+
+            # 记录日志
+            self.result.logs.append(AlgorithmLog(
+                operation=OperationType.GENERATE_RECOMMENDED_QUESTIONS,
+                ai_modal_id=self.input.ai_modal_id,
+                ai_modal_name=self.input.ai_modal_name,
+                full_message=[{'type': msg.type, 'content': msg.content} for msg in guess_msg],
+                reasoning_content=full_thinking,
+                token_usage=token_usage
+            ))
+
+            # 保存推荐问题结果
+            self.result.recommended_questions = full_guess_text
+
+            yield {'recommended_question': full_guess_text}
+
+            _debug_log("RECOMMEND_QUESTIONS", "Generated recommend questions", {
+                "length": len(full_guess_text)
+            })
+
+        except Exception:
+            traceback.print_exc()
+            yield {'content': str(traceback.format_exc()), 'type': 'error'}
+
