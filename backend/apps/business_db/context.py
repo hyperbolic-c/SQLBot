@@ -100,6 +100,7 @@ class AlgorithmContext(BaseModel):
 
     # 聊天上下文
     chat_id: Optional[int] = None
+    record_id: Optional[int] = None  # 聊天记录 ID（用于推荐问题等）
     chat_record_id: Optional[int] = None
     question: str
     regenerate_record_id: Optional[int] = None

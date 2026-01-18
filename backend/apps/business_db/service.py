@@ -972,6 +972,9 @@ class BusinessDBService:
             config=None
         )
 
+        # 设置 record_id（用于 run_recommend_questions 中的日志记录）
+        context.record_id = record_id
+
         # 创建算法引擎
         engine = AlgorithmEngine(context, self.session)
 
