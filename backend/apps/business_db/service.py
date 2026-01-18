@@ -928,88 +928,78 @@ class BusinessDBService:
 
         SQLBotLogUtil.info(f"[BusinessDBService] process_recommend_questions 开始, record_id={record_id}")
 
+        # 从 ChatRecord 获取数据源信息
+        record = self.session.get(ChatRecord, record_id)
+        if not record:
+            raise ValueError(f"ChatRecord not found: {record_id}")
+
+        datasource_id = record.datasource
+        SQLBotLogUtil.info(f"[BusinessDBService] 从 ChatRecord 获取 datasource_id: {datasource_id}")
+
+        # 预加载业务数据
+        context = self.preprocess(
+            current_user=None,  # 推荐问题不需要用户信息
+            chat_id=0,  # 推荐问题不需要 chat_id
+            question='',
+            record_id=record_id,
+            datasource_id=datasource_id,
+            ai_model_id=None,
+            regenerate_record_id=None,
+            language='zh',
+        )
+
+        # 获取 AI 模型配置
         try:
-            # 从 ChatRecord 获取数据源信息
-            record = self.session.get(ChatRecord, record_id)
-            if not record:
-                raise ValueError(f"ChatRecord not found: {record_id}")
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
 
-            datasource_id = record.datasource
-            SQLBotLogUtil.info(f"[BusinessDBService] 从 ChatRecord 获取 datasource_id: {datasource_id}")
+        config = loop.run_until_complete(get_default_config())
+        context.ai_model_id = config.model_id
+        # 将 LLMConfig 转换为 AiModelContext（修复类型不匹配问题）
+        context.ai_model = AiModelContext(
+            id=config.model_id,
+            name=config.model_name,
+            model_type=1 if config.model_type == "openai" else 2,
+            base_model=config.model_name,
+            supplier=0,
+            protocol=1 if config.model_type == "openai" else 2,
+            api_domain=config.api_base_url or "",
+            api_key=config.api_key or "",
+            config=None
+        )
 
-            # 预加载业务数据
-            context = self.preprocess(
-                current_user=None,  # 推荐问题不需要用户信息
-                chat_id=0,  # 推荐问题不需要 chat_id
-                question='',
-                record_id=record_id,
-                datasource_id=datasource_id,
-                ai_model_id=None,
-                regenerate_record_id=None,
-                language='zh',
+        # 创建算法引擎
+        engine = AlgorithmEngine(context, self.session)
+
+        # 运行推荐问题生成
+        result = None
+        for event in engine.run_recommend_questions(articles_number=articles_number):
+            SQLBotLogUtil.info(f"[BusinessDBService] 收到推荐问题事件: type={event.type}")
+            result = engine.get_result()
+
+            # 生成 SSE 事件，格式与原实现保持一致
+            if event.type == 'recommended_question':
+                sse_data = {'content': event.data.get('content'), 'type': event.type}
+                yield sse_data
+            elif event.type == 'error':
+                sse_data = {'content': event.data.get('content'), 'type': event.type}
+                yield sse_data
+
+        # 发送 finish 事件告知前端流已结束
+        yield {'type': 'finish'}
+
+        # 保存推荐问题答案（最后统一保存）
+        if result and result.recommended_question_answer:
+            self._update_record_field(
+                record_id,
+                recommended_question_answer=result.recommended_question_answer,
+                recommended_question=result.recommended_question
             )
+            self.session.commit()
+            SQLBotLogUtil.info(f"[BusinessDBService] 推荐问题已保存到数据库")
 
-            # 获取 AI 模型配置
-            try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
+        SQLBotLogUtil.info(f"[BusinessDBService] process_recommend_questions 完成")
 
-            config = loop.run_until_complete(get_default_config())
-            context.ai_model_id = config.model_id
-            # 将 LLMConfig 转换为 AiModelContext（修复类型不匹配问题）
-            context.ai_model = AiModelContext(
-                id=config.model_id,
-                name=config.model_name,
-                model_type=1 if config.model_type == "openai" else 2,
-                base_model=config.model_name,
-                supplier=0,
-                protocol=1 if config.model_type == "openai" else 2,
-                api_domain=config.api_base_url or "",
-                api_key=config.api_key or "",
-                config=None
-            )
-
-            # 创建算法引擎
-            engine = AlgorithmEngine(context, self.session)
-
-            # 运行推荐问题生成
-            result = None
-            for event in engine.run_recommend_questions(articles_number=articles_number):
-                SQLBotLogUtil.info(f"[BusinessDBService] 收到推荐问题事件: type={event.type}")
-                result = engine.get_result()
-
-                # 生成 SSE 事件，格式与原实现保持一致
-                if event.type == 'recommended_question':
-                    sse_data = {'content': event.data.get('content'), 'type': event.type}
-                    yield sse_data
-                elif event.type == 'error':
-                    sse_data = {'content': event.data.get('content'), 'type': event.type}
-                    yield sse_data
-
-            # 发送 finish 事件告知前端流已结束
-            yield {'type': 'finish'}
-
-            # 保存推荐问题答案（最后统一保存）
-            if result and result.recommended_question_answer:
-                self._update_record_field(
-                    record_id,
-                    recommended_question_answer=result.recommended_question_answer,
-                    recommended_question=result.recommended_question
-                )
-                self.session.commit()
-                SQLBotLogUtil.info(f"[BusinessDBService] 推荐问题已保存到数据库")
-
-            SQLBotLogUtil.info(f"[BusinessDBService] process_recommend_questions 完成")
-
-            return result if result else engine.get_result()
-
-        finally:
-            # 确保 session 在所有操作完成后关闭
-            from apps.chat.task.llm import session_maker
-            try:
-                session_maker.remove()
-                SQLBotLogUtil.info(f"[BusinessDBService] session 已关闭")
-            except Exception as e:
-                SQLBotLogUtil.warning(f"[BusinessDBService] 关闭 session 失败: {e}")
+        return result if result else engine.get_result()
