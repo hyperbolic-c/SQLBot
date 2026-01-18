@@ -1,8 +1,10 @@
 # Copyright 2024 SQLBot. All rights reserved.
 # 算法层 API - 处理 page 来源的智能问数请求
 
+import asyncio
 import traceback
 from concurrent.futures import ThreadPoolExecutor
+from typing import Optional
 
 import orjson
 from fastapi import APIRouter
@@ -75,26 +77,20 @@ async def process_algorithm_task(
         algorithm_service.initialize(config, ds)
 
         # 使用线程池执行（遵循原实现）
-        algorithm_service.future = executor.submit(
-            algorithm_service.run_task, in_chat, stream
-        )
+        algorithm_service.run_task_async(in_chat=in_chat, stream=stream)
 
-        # 收集并返回结果
+        # 等待任务完成并返回结果
+        # 遵循原实现，使用 await_result 模式
         def collect_result():
-            try:
-                for chunk in algorithm_service.run_task(in_chat=in_chat, stream=stream):
-                    if in_chat:
-                        yield 'data:' + orjson.dumps(chunk).decode() + '\n\n'
-                    else:
-                        yield chunk
-
-                # 保存结果到业务数据库
-                result = algorithm_service.get_result()
-                result.record_id = record.id
-                business_db.save_algorithm_result(record.id, result)
-
-            except Exception:
-                traceback.print_exc()
+            # 首先等待任务完成
+            while algorithm_service.future.done() is False:
+                pass
+            # 然后返回所有结果
+            while True:
+                chunk = algorithm_service.pop_chunk()
+                if chunk is None:
+                    break
+                yield chunk
 
         if stream:
             return StreamingResponse(collect_result(), media_type="text/event-stream")
@@ -111,7 +107,7 @@ async def process_algorithm_task(
         traceback.print_exc()
         if stream:
             def _err(_e: Exception):
-                yield 'data:' + orjson.dumps({'content': str(_e), 'type': 'error'}).decode() + '\n\n'
+                yield {'content': str(_e), 'type': 'error'}
 
             return StreamingResponse(_err(e), media_type="text/event-stream")
         else:
@@ -135,7 +131,7 @@ async def process_recommend_questions(
     from apps.chat.curd.chat import get_chat_record_by_id
 
     def _return_empty():
-        yield 'data:' + orjson.dumps({'content': '[]', 'type': 'recommended_question'}).decode() + '\n\n'
+        yield {'content': '[]', 'type': 'recommended_question'}
 
     try:
         # 获取记录
@@ -165,28 +161,20 @@ async def process_recommend_questions(
         algorithm_service.set_record(record)
         algorithm_service.set_articles_number(articles_number)
 
-        # 使用线程池执行
-        algorithm_service.future = executor.submit(
-            algorithm_service.run_recommend_questions_task
-        )
+        # 使用线程池执行（遵循原实现）
+        algorithm_service.run_recommend_questions_task_async()
 
-        # 收集并返回结果
+        # 等待任务完成并返回结果
         def collect_result():
-            try:
-                for chunk in algorithm_service.run_recommend_questions_task():
-                    if chunk.get('recommended_question'):
-                        yield 'data:' + orjson.dumps(
-                            {'content': chunk.get('recommended_question'),
-                             'type': 'recommended_question'}
-                        ).decode() + '\n\n'
-                    else:
-                        yield 'data:' + orjson.dumps(
-                            {'content': chunk.get('content'),
-                             'reasoning_content': chunk.get('reasoning_content'),
-                             'type': 'recommended_question_result'}
-                        ).decode() + '\n\n'
-            except Exception:
-                traceback.print_exc()
+            # 等待任务完成
+            while algorithm_service.future.done() is False:
+                pass
+            # 返回所有结果
+            while True:
+                chunk = algorithm_service.pop_chunk()
+                if chunk is None:
+                    break
+                yield chunk
 
         return StreamingResponse(collect_result(), media_type="text/event-stream")
 
@@ -194,7 +182,7 @@ async def process_recommend_questions(
         traceback.print_exc()
 
         def _err(_e: Exception):
-            yield 'data:' + orjson.dumps({'content': str(_e), 'type': 'error'}).decode() + '\n\n'
+            yield {'content': str(_e), 'type': 'error'}
 
         return StreamingResponse(_err(e), media_type="text/event-stream")
 
@@ -226,7 +214,7 @@ async def algorithm_ask_recommend_questions(
     session: SessionDep,
     current_user: CurrentUser,
     chat_record_id: int,
-    articles_number: int | None = 4
+    articles_number: Optional[int] = 4
 ):
     """
     算法层推荐问题接口 - 处理 page 来源的请求

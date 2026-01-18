@@ -12,7 +12,6 @@ from apps.ai_model.model_factory import LLMFactory
 from apps.algorithm.result import AlgorithmLog, AlgorithmResult, OperationType
 from apps.algorithm.schema import AlgorithmInput
 from apps.db.db import exec_sql
-from apps.template.template import get_base_template
 from common.error import SingleMessageError
 from common.utils.data_format import DataFormat
 from common.utils.utils import SQLBotLogUtil, extract_nested_json
@@ -165,22 +164,14 @@ class AlgorithmService:
         self.chart_message.append(SystemMessage(content=self._build_chart_system_prompt()))
 
     def _build_sql_system_prompt(self) -> str:
-        """构建 SQL 系统提示词"""
-        # 从本地模板文件读取
-        base_template = get_base_template()
+        """构建 SQL 系统提示词
 
-        # 构建提示词
-        system_prompt = base_template.get('system', '').format(
-            engine=self.input.engine_type,
-            schema=self.input.db_schema,
-            question=self.input.question,
-            terminologies=self.input.terminologies,
-            data_training=self.input.data_training,
-            custom_prompt=self.input.custom_prompt,
-            error_msg=self.input.error_msg,
-            limit=self.input.enable_row_limit
+        使用 AlgorithmInput.sql_sys_question 方法，与原实现保持一致
+        """
+        return self.input.sql_sys_question(
+            db_type=self.input.engine_type,
+            enable_query_limit=self.input.enable_row_limit
         )
-        return system_prompt
 
     def _build_chart_system_prompt(self) -> str:
         """构建图表系统提示词"""
@@ -303,6 +294,31 @@ class AlgorithmService:
     def get_result(self) -> AlgorithmResult:
         """获取结果"""
         return self.result
+
+    def pop_chunk(self) -> dict[str, Any] | None:
+        """从 chunk_list 中弹出一个结果
+
+        遵循原实现 LLMService.pop_chunk 方法
+        """
+        try:
+            return self.chunk_list.pop(0)
+        except IndexError:
+            return None
+
+    def run_task_async(self, in_chat: bool = True, stream: bool = True):
+        """异步运行任务
+
+        遵循原实现 LLMService.run_task_async 方法
+        """
+        self.future = executor.submit(self.run_task_cache, in_chat, stream)
+
+    def run_task_cache(self, in_chat: bool = True, stream: bool = True):
+        """缓存任务结果
+
+        遵循原实现 LLMService.run_task_cache 方法
+        """
+        for chunk in self.run_task(in_chat, stream):
+            self.chunk_list.append(chunk)
 
     def set_record(self, record):
         """设置记录"""
