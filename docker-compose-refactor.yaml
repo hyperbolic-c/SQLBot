@@ -1,0 +1,74 @@
+# docker-compose.yml for testing the refactored architecture
+# Usage: docker compose -f docker-compose.test.yml up -d
+
+services:
+  sqlbot-refactor:
+    # Use the pre-built image instead of building
+    image: sqlbot:test-refactor
+    container_name: sqlbot-refactor-test
+    ports:
+      - "38000:3000"   # UI
+      - "38001:8000"   # API
+      - "38002:8001"   # Admin
+    environment:
+      - POSTGRES_SERVER=postgres-refactor
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=sqlbot
+      - POSTGRES_USER=root
+      - POSTGRES_PASSWORD=Password123@pg
+      - USE_NEW_ALGORITHM=true
+      - SQL_DEBUG=false
+      - LOG_LEVEL=DEBUG
+    # volumes:
+    depends_on:
+      postgres-refactor:
+        condition: service_started
+      mysql-wandasql:
+        condition: service_healthy
+    networks:
+      - sqlbot-refactor-net
+
+  postgres-refactor:
+    image: pgvector/pgvector:pg17
+    container_name: postgres-refactor
+    environment:
+      - POSTGRES_DB=sqlbot
+      - POSTGRES_USER=root
+      - POSTGRES_PASSWORD=Password123@pg
+    ports:
+      - "35432:5432"
+    volumes:
+      - postgres-refactor-data:/var/lib/postgresql/data
+    networks:
+      - sqlbot-refactor-net
+
+# docker inspect mysql-wandasql | findstr "IPAddress" 
+  mysql-wandasql:
+    image: mysql:8.0
+    container_name: mysql-wandasql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: 123456
+      MYSQL_DATABASE: wandasql_test
+    ports:
+      - "13306:3306"
+    volumes:
+      - wandasql_mysql_data:/var/lib/mysql
+    command:
+      --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p123456"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - sqlbot-refactor-net
+
+volumes:
+  postgres-refactor-data:
+  wandasql_mysql_data:
+
+networks:
+  sqlbot-refactor-net:
+    driver: bridge
