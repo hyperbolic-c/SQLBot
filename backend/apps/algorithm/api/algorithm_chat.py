@@ -68,6 +68,7 @@ async def process_algorithm_task(
         )
 
         # 获取 LLM 配置和数据源
+        # TODO: 合并一次性获取
         from apps.ai_model.model_factory import get_default_config
         config = await get_default_config()
         ds = session.get(CoreDatasource, algorithm_input.datasource_id)
