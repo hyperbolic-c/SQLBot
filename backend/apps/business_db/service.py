@@ -1002,7 +1002,11 @@ class BusinessDBService:
             self.session.commit()
             SQLBotLogUtil.info(f"[BusinessDBService] 推荐问题已保存到数据库, recommended_question={result.recommended_question}")
 
-        # 发送 finish 事件，与原实现保持一致
+        # 发送 recommended_question 事件（与原实现一致：包含解析后的 JSON 数组）
+        if result and result.recommended_question:
+            yield {'recommended_question': result.recommended_question}
+
+        # 发送 finish 事件
         yield {'type': 'finish'}
 
         SQLBotLogUtil.info(f"[BusinessDBService] process_recommend_questions 完成")
