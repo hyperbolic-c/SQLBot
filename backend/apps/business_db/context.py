@@ -90,10 +90,10 @@ class AlgorithmContext(BaseModel):
     这个上下文包含了算法处理所需的全部数据，
     算法执行过程中不再访问业务数据库
     """
-    # 用户信息
-    user_id: int
-    workspace_id: int
-    oid: int
+    # 用户信息 (使用 Optional[int] 以支持推荐问题等无用户场景)
+    user_id: Optional[int] = None
+    workspace_id: Optional[int] = None
+    oid: Optional[int] = None
 
     # 用户上下文（用于权限过滤）
     user_context: Optional[UserContext] = None
