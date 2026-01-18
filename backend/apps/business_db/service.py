@@ -992,10 +992,7 @@ class BusinessDBService:
                 sse_data = {'content': event.data.get('content'), 'type': event.type}
                 yield sse_data
 
-        # 发送 finish 事件告知前端流已结束
-        yield {'type': 'finish'}
-
-        # 保存推荐问题答案（最后统一保存）
+        # 保存推荐问题答案（与原实现一致：在 finish 事件之前保存）
         if result and result.recommended_question_answer:
             self._update_record_field(
                 record_id,
@@ -1003,7 +1000,10 @@ class BusinessDBService:
                 recommended_question=result.recommended_question
             )
             self.session.commit()
-            SQLBotLogUtil.info(f"[BusinessDBService] 推荐问题已保存到数据库")
+            SQLBotLogUtil.info(f"[BusinessDBService] 推荐问题已保存到数据库, recommended_question={result.recommended_question}")
+
+        # 发送 finish 事件，与原实现保持一致
+        yield {'type': 'finish'}
 
         SQLBotLogUtil.info(f"[BusinessDBService] process_recommend_questions 完成")
 
