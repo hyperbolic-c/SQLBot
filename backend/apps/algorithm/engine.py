@@ -899,19 +899,25 @@ class AlgorithmEngine:
             cleaned_text = re.sub(r'```\s*$', '', cleaned_text)
             cleaned_text = cleaned_text.strip()
 
+            SQLBotLogUtil.info(f"[AlgorithmEngine] _parse_recommended_questions: 清理后文本长度={len(cleaned_text)}, 前100字符={cleaned_text[:100]}")
+
             # 提取 JSON 数组
             json_match = re.search(r'\[[\s\S]*\]', cleaned_text)
             if json_match:
                 json_str = json_match.group()
+                SQLBotLogUtil.info(f"[AlgorithmEngine] _parse_recommended_questions: 提取到JSON={json_str[:100]}...")
                 questions = orjson.loads(json_str)
                 if isinstance(questions, list):
                     # 返回 JSON 字符串
-                    return orjson.dumps(questions[:4]).decode()
+                    result = orjson.dumps(questions[:4]).decode()
+                    SQLBotLogUtil.info(f"[AlgorithmEngine] _parse_recommended_questions: 解析成功, 问题数量={len(questions)}, 返回={result}")
+                    return result
 
             # 如果解析失败，返回原始文本
+            SQLBotLogUtil.warning(f"[AlgorithmEngine] _parse_recommended_questions: 未找到JSON数组, 返回空数组")
             return orjson.dumps([]).decode()
         except Exception as e:
-            SQLBotLogUtil.error(f"[AlgorithmEngine] 解析推荐问题失败: {e}")
+            SQLBotLogUtil.error(f"[AlgorithmEngine] _parse_recommended_questions 失败: {e}, text前200字符={text[:200]}")
             return orjson.dumps([]).decode()
 
     def run(

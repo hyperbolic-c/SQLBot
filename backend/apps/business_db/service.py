@@ -992,6 +992,9 @@ class BusinessDBService:
                 sse_data = {'content': event.data.get('content'), 'type': event.type}
                 yield sse_data
 
+        SQLBotLogUtil.info(f"[BusinessDBService] 推荐问题生成完成, result.recommended_question_answer={result.recommended_question_answer if result else 'None'}")
+        SQLBotLogUtil.info(f"[BusinessDBService] 推荐问题生成完成, result.recommended_question={result.recommended_question if result else 'None'}")
+
         # 保存推荐问题答案（与原实现一致：在 finish 事件之前保存）
         if result and result.recommended_question_answer:
             self._update_record_field(
@@ -1001,6 +1004,8 @@ class BusinessDBService:
             )
             self.session.commit()
             SQLBotLogUtil.info(f"[BusinessDBService] 推荐问题已保存到数据库, recommended_question={result.recommended_question}")
+        else:
+            SQLBotLogUtil.warning(f"[BusinessDBService] result.recommended_question_answer 为空, 不保存")
 
         # 发送 recommended_question 事件（与原实现一致：包含解析后的 JSON 数组）
         if result and result.recommended_question:
