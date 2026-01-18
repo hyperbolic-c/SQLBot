@@ -115,6 +115,7 @@ class AlgorithmContext(BaseModel):
     engine: str = ""  # Database type
 
     # LLM 配置
+    ai_model_id: Optional[int] = None
     ai_model: Optional[AiModelContext] = None
     model_config: Dict[str, Any] = {}
 
