@@ -1004,7 +1004,7 @@ class BusinessDBService:
 
         # 发送 recommended_question 事件（与原实现一致：包含解析后的 JSON 数组）
         if result and result.recommended_question:
-            yield {'recommended_question': result.recommended_question}
+            yield {'content': result.recommended_question, 'type': 'recommended_question'}
 
         # 发送 finish 事件
         yield {'type': 'finish'}
