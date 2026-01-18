@@ -374,17 +374,19 @@ class BusinessDBService:
 
         # 4. 获取格式化后的专业术语
         terminology_template = ""
-        if datasource_context:
-            terminology_template = self._get_terminology_template(
-                current_user.oid, question, datasource_context.id
-            )
-        else:
-            terminology_template = self._get_terminology_template(current_user.oid, question, None)
+        if current_user is not None:
+            user_oid = current_user.oid
+            if datasource_context:
+                terminology_template = self._get_terminology_template(
+                    user_oid, question, datasource_context.id
+                )
+            else:
+                terminology_template = self._get_terminology_template(user_oid, question, None)
         SQLBotLogUtil.info(f"[BusinessDBService] 专业术语模板长度: {len(terminology_template)}")
 
         # 5. 获取格式化后的训练数据
         data_training_template = ""
-        if datasource_context:
+        if current_user is not None and datasource_context:
             data_training_template = self._get_training_template(
                 current_user.oid, question, datasource_context.id, None
             )
@@ -393,10 +395,11 @@ class BusinessDBService:
         # 6. 获取自定义提示词
         custom_prompt = ""
         try:
-            if datasource_context:
-                custom_prompt = self._get_custom_prompt(current_user.oid, datasource_context.id)
-            else:
-                custom_prompt = self._get_custom_prompt(current_user.oid, None)
+            if current_user is not None:
+                if datasource_context:
+                    custom_prompt = self._get_custom_prompt(current_user.oid, datasource_context.id)
+                else:
+                    custom_prompt = self._get_custom_prompt(current_user.oid, None)
         except Exception as e:
             SQLBotLogUtil.warning(f"[BusinessDBService] 获取自定义提示词失败 (可能未授权): {e}")
         SQLBotLogUtil.info(f"[BusinessDBService] 自定义提示词长度: {len(custom_prompt)}")
@@ -452,16 +455,24 @@ class BusinessDBService:
 
         # 9. 构建上下文 - 包含所有预加载的数据
         # 创建用户上下文
-        user_context = UserContext(
-            id=current_user.id,
-            workspace_id=current_user.oid,  # 使用 oid 作为 workspace_id
-            oid=current_user.oid,
-        )
+        user_context = None
+        user_id = None
+        workspace_id = None
+        oid = None
+        if current_user is not None:
+            user_id = current_user.id
+            workspace_id = current_user.oid
+            oid = current_user.oid
+            user_context = UserContext(
+                id=current_user.id,
+                workspace_id=current_user.oid,  # 使用 oid 作为 workspace_id
+                oid=current_user.oid,
+            )
 
         context = AlgorithmContext(
-            user_id=current_user.id,
-            workspace_id=current_user.oid,  # 使用 oid 作为 workspace_id
-            oid=current_user.oid,
+            user_id=user_id,
+            workspace_id=workspace_id,  # 使用 oid 作为 workspace_id
+            oid=oid,
             user_context=user_context,
             chat_id=chat_id,
             chat_record_id=record_id,  # 记录 ID
@@ -937,7 +948,18 @@ class BusinessDBService:
 
         config = loop.run_until_complete(get_default_config())
         context.ai_model_id = config.model_id
-        context.ai_model = config
+        # 将 LLMConfig 转换为 AiModelContext（修复类型不匹配问题）
+        context.ai_model = AiModelContext(
+            id=config.model_id,
+            name=config.model_name,
+            model_type=1 if config.model_type == "openai" else 2,
+            base_model=config.model_name,
+            supplier=0,
+            protocol=1 if config.model_type == "openai" else 2,
+            api_domain=config.api_base_url or "",
+            api_key=config.api_key or "",
+            config=None
+        )
 
         # 创建算法引擎
         engine = AlgorithmEngine(context, self.session)
@@ -955,6 +977,9 @@ class BusinessDBService:
             elif event.type == 'error':
                 sse_data = {'content': event.data.get('content'), 'type': event.type}
                 yield sse_data
+
+        # 发送 finish 事件告知前端流已结束
+        yield {'type': 'finish'}
 
         # 保存推荐问题答案（最后统一保存）
         if result and result.recommended_question_answer:

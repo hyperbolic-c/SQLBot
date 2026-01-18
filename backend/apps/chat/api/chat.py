@@ -392,6 +392,7 @@ async def stream_sql_new(session: SessionDep, current_user: CurrentUser, request
 
             # 调用 process，传入获取到的 ai_model_id
             SQLBotLogUtil.info(f"[stream_sql_new] 开始生成响应, stream={stream}")
+            event_count = 0
             for event_data in business_service.process(
                 current_user=current_user,
                 chat_id=request_question.chat_id,
@@ -405,22 +406,21 @@ async def stream_sql_new(session: SessionDep, current_user: CurrentUser, request
                 in_chat=in_chat,
                 stream=stream,
             ):
+                event_count += 1
                 # event_data 是字典，直接序列化
                 # orjson.dumps 返回 bytes，需要 decode 成 str，否则会变成 b'...' 格式
                 json_str = orjson.dumps(event_data).decode()
                 sse_data = f"data: {json_str}\n\n"
                 event_type = event_data.get('type', '')
 
-                # 详细记录每个 SSE 事件
-                SSEDebugLogUtil.info(f"[SSE DEBUG] ========== stream_sql_new SSE 输出 ==========")
-                SSEDebugLogUtil.info(f"[SSE DEBUG] 事件类型: {event_type}")
-                SSEDebugLogUtil.info(f"[SSE DEBUG] 完整事件数据: {json_str}")
-                SSEDebugLogUtil.info(f"[SSE DEBUG] SSE 格式: {repr(sse_data)}")
+                # 使用 SQLBotLogUtil 确保日志可见
+                SQLBotLogUtil.info(f"[stream_sql_new] 事件 #{event_count}: type={event_type}")
+                SQLBotLogUtil.info(f"[stream_sql_new] SSE 数据: {sse_data[:200]}")
 
                 yield sse_data
-                SSEDebugLogUtil.info(f"[SSE DEBUG] stream_sql_new SSE 事件已输出")
+                SQLBotLogUtil.info(f"[stream_sql_new] 事件 #{event_count} 已 yield")
 
-            SSEDebugLogUtil.info(f"[SSE DEBUG] ========== stream_sql_new 响应生成完成 ==========")
+            SQLBotLogUtil.info(f"[stream_sql_new] 响应生成完成, 共 {event_count} 个事件")
 
         except Exception as e:
             traceback.print_exc()
