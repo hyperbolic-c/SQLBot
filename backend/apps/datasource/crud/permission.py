@@ -72,7 +72,10 @@ def get_column_permission_fields(session: SessionDep, current_user: CurrentUser,
     return fields
 
 
-def is_normal_user(current_user: CurrentUser):
+def is_normal_user(current_user: Optional[CurrentUser]):
+    """判断是否是普通用户（非管理员）"""
+    if current_user is None:
+        return True  # 无用户时假设为普通用户
     return current_user.id != 1
 
 
